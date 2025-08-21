@@ -1,0 +1,11 @@
+﻿{
+  "expo": {
+    "name": "chatapp-clean",
+    "slug": "chatapp-clean",
+    "scheme": "chatappclean",
+    "orientation": "portrait",
+    "newArchEnabled": true,
+    "jsEngine": "hermes",
+    "assetBundlePatterns": ["**/*"]
+  }
+}
