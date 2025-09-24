@@ -1,82 +1,109 @@
-// screens/HomeScreen.js
-import React, { useEffect, useState } from "react";
+// src/screens/HomeScreen.js
+import React, { useEffect, useState, useContext, useCallback } from "react";
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import axios from "axios";
+import { AuthContext } from "../context/AuthContext";
+import api from "../api/axiosInstance";
+import { ROUTES } from "../navigation/routes";
+import { getSocket } from "../api/socket";
 
 export default function HomeScreen({ navigation }) {
+  const { user, loading, logout } = useContext(AuthContext);
   const [users, setUsers] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // 🔹 Fetch current user & all users
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const token = await AsyncStorage.getItem("token");
-
-        // ✅ Get current logged-in user
-        const meRes = await axios.get("http://10.0.2.2:5000/api/users/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setCurrentUser(meRes.data);
-
-        // ✅ Get all users (except self)
-        const res = await axios.get("http://10.0.2.2:5000/api/users", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        const filtered = res.data.filter((u) => u._id !== meRes.data._id);
-        setUsers(filtered);
-      } catch (err) {
-        console.error("❌ Failed to load users:", err.message);
+  /** 🔹 Fetch users from API */
+  const fetchUsers = useCallback(async () => {
+    if (!user) return;
+    try {
+      setRefreshing(true);
+      const res = await api.get("/users");
+      setUsers(res.data || []);
+    } catch (err) {
+      console.warn("HomeScreen load error:", err.response?.data || err.message);
+      if (err.response?.status === 401) {
+        await logout();
       }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [user, logout]);
+
+  /** 🔹 Initial fetch when logged in */
+  useEffect(() => {
+    if (!loading && user) {
+      fetchUsers();
+    }
+  }, [loading, user, fetchUsers]);
+
+  /** 🔹 Real-time presence updates */
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket || !user) return;
+
+    const handleUserStatus = ({ userId, online }) => {
+      setUsers((prev) =>
+        prev.map((u) =>
+          u._id === userId ? { ...u, isOnline: online } : u
+        )
+      );
     };
 
-    fetchUsers();
-  }, []);
+    const handleOnlineUsers = (ids) => {
+      setUsers((prev) =>
+        prev.map((u) => ({ ...u, isOnline: ids.includes(u._id) }))
+      );
+    };
 
-  const handleChat = (user) => {
-    // ✅ Navigate to ChatScreen with params
-    navigation.navigate("Chat", {
-      userId: user._id,
-      username: user.username,
-    });
+    socket.on("userStatus", handleUserStatus);
+    socket.on("onlineUsers", handleOnlineUsers);
+
+    return () => {
+      socket.off("userStatus", handleUserStatus);
+      socket.off("onlineUsers", handleOnlineUsers);
+    };
+  }, [user]);
+
+  /** 🔹 Render one user row */
+  const renderItem = ({ item }) => {
+    const displayName = item.username || item.email || "Unknown User";
+    return (
+      <TouchableOpacity
+        style={styles.userRow}
+        onPress={() => navigation.navigate(ROUTES.CHAT, { user: item })}
+      >
+        <Text>{displayName}</Text>
+        <Text style={{ color: item.isOnline ? "green" : "red" }}>
+          {item.isOnline ? "Online" : "Offline"}
+        </Text>
+      </TouchableOpacity>
+    );
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.welcome}>
-        Welcome, {currentUser?.username} 👋
+        Welcome {user?.username || user?.email || "You"}
       </Text>
 
-      <Text style={styles.subtitle}>Available Users:</Text>
-
       <FlatList
-        data={users}
+        data={users.filter((u) => u._id !== user?._id)} // exclude self
         keyExtractor={(item) => item._id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.userCard}
-            onPress={() => handleChat(item)}
-          >
-            <Text style={styles.username}>{item.username}</Text>
-          </TouchableOpacity>
-        )}
+        renderItem={renderItem}
+        refreshing={refreshing}
+        onRefresh={fetchUsers}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#f9f9f9" },
+  container: { flex: 1, paddingTop: 50 },
   welcome: { fontSize: 20, fontWeight: "bold", marginBottom: 10 },
-  subtitle: { fontSize: 16, marginBottom: 15 },
-  userCard: {
-    padding: 15,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    marginBottom: 10,
-    elevation: 2,
+  userRow: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ddd",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
-  username: { fontSize: 16 },
 });

@@ -1,29 +1,36 @@
 // backend/config/db.js
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-async function connectDB() {
-  const uri = process.env.MONGO_URI;
-  if (!uri) {
-    console.error('❌ MONGO_URI missing in .env');
-    process.exit(1);
-  }
-
-  mongoose.set('strictQuery', false);
-
+const connectDB = async () => {
   try {
-    await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 5000,
-    });
-    const { name, host, port } = mongoose.connection;
-    console.log(`🍃 MongoDB connected → db: ${name} @ ${host}:${port}`);
-  } catch (err) {
-    console.error('❌ MongoDB connection error:', err.message);
+    const uri = process.env.MONGO_URI;
+    if (!uri) {
+      throw new Error("MONGO_URI is not defined in environment variables");
+    }
+
+    // Optional: silence strictQuery warnings (Mongoose 7+)
+    mongoose.set("strictQuery", false);
+
+    await mongoose.connect(uri);
+
+    console.log("🟢 MongoDB connected");
+  } catch (error) {
+    console.error("❌ MongoDB connection failed:", error.message);
     process.exit(1);
   }
 
-  mongoose.connection.on('disconnected', () => {
-    console.warn('⚠️  MongoDB disconnected');
+  // Log connection events for better visibility in dev/prod
+  mongoose.connection.on("disconnected", () => {
+    console.warn("⚠️ MongoDB disconnected");
   });
-}
+
+  mongoose.connection.on("reconnected", () => {
+    console.log("🔄 MongoDB reconnected");
+  });
+
+  mongoose.connection.on("error", (err) => {
+    console.error("💥 MongoDB error:", err);
+  });
+};
 
 module.exports = connectDB;

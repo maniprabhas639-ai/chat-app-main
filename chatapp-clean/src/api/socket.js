@@ -3,41 +3,56 @@ import { io } from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SOCKET_URL } from "../config/config";
 
-// ⚡ Create socket instance
-export const socket = io(SOCKET_URL, {
-  transports: ["websocket"],   // Force WebSocket
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-  timeout: 5000,
-  autoConnect: false,          // ⛔ don't auto connect yet
-});
+let socket = null;
 
-// 🔑 Attach token dynamically before connecting
-export const connectSocket = async () => {
+export const connectSocket = async (maybeToken) => {
+  if (socket && socket.connected) return socket;
+
   try {
-    const token = await AsyncStorage.getItem("token"); // 🔥 secure auth
-    if (token) {
-      socket.auth = { token };
+    const tokenFromStorage = maybeToken ?? (await AsyncStorage.getItem("token"));
+    if (!tokenFromStorage) return null;
+
+    if (!socket) {
+      socket = io(SOCKET_URL, {
+        transports: ["websocket"],
+        auth: { token: tokenFromStorage },
+        reconnection: true,
+      });
+
+      socket.on("connect", () => {
+        console.log("socket connected:", socket.id);
+        // Emit authenticate (server also supports handshake auth)
+        if (tokenFromStorage) {
+          try { socket.emit("authenticate", tokenFromStorage); } catch (e) {}
+        }
+      });
+
+      socket.on("connect_error", (err) => {
+        console.warn("socket connect_error:", err?.message ?? err);
+      });
+
+      socket.on("error", (err) => {
+        console.warn("socket error:", err);
+      });
+    } else {
+      socket.auth = { token: tokenFromStorage };
+      if (!socket.connected) socket.connect();
     }
-    if (!socket.connected) {
-      socket.connect();
-    }
+
+    return socket;
   } catch (err) {
-    console.warn("[socket] Failed to load token", err);
+    console.warn("connectSocket error:", err?.message || err);
+    return null;
   }
 };
 
-// 🚪 Disconnect helper
+export const getSocket = () => socket;
+
 export const disconnectSocket = () => {
-  if (socket.connected) {
-    socket.disconnect();
+  if (socket) {
+    try {
+      socket.disconnect();
+    } catch {}
+    socket = null;
   }
 };
-
-// ✅ Debug logs only in dev
-if (__DEV__) {
-  socket.on("connect",       () => console.log("[socket] ✅ connected:", socket.id));
-  socket.on("disconnect",    (r) => console.log("[socket] ❌ disconnected:", r));
-  socket.on("connect_error", (e) => console.log("[socket] ⚠️ connect_error:", e?.message));
-}

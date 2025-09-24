@@ -1,17 +1,41 @@
-const jwt = require('jsonwebtoken');
+// backend/middleware/authMiddleware.js
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
-function authMiddleware(req, res, next) {
+const auth = async (req, res, next) => {
   try {
-    const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ message: 'No token provided' });
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "No token provided" });
+    }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = { id: decoded.id, username: decoded.username };
+    const token = authHeader.split(" ")[1];
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      // ⚠️ Differentiate JWT errors
+      if (err.name === "TokenExpiredError") {
+        return res.status(401).json({ message: "jwt expired" });
+      }
+      if (err.name === "JsonWebTokenError") {
+        return res.status(401).json({ message: "invalid token" });
+      }
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const user = await User.findById(decoded.id).select("_id name email");
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    req.user = { id: user._id.toString(), name: user.name, email: user.email };
     next();
   } catch (err) {
-    return res.status(401).json({ message: 'Invalid or expired token' });
+    console.error("Auth middleware error:", err.message);
+    return res.status(500).json({ message: "Server error in auth" });
   }
-}
+};
 
-module.exports = authMiddleware;
+module.exports = auth;

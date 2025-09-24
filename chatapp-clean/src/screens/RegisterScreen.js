@@ -1,41 +1,38 @@
-import React, { useState } from "react";
-import { View, Text, TextInput, Button, StyleSheet, Alert } from "react-native";
+// src/screens/RegisterScreen.js
+import React, { useState, useContext } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { AuthContext } from "../context/AuthContext";
+import api from "../api/axiosInstance";
+import { ROUTES } from "../navigation/routes";
 
 export default function RegisterScreen({ navigation }) {
-  const [username, setUsername] = useState("");
+  const { register } = useContext(AuthContext);
+
+  const [username, setUsername] = useState(""); // ✅ changed from "name"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  // 👇 Use your local IP (Expo device must be on same WiFi)
-  const API = "http://192.168.43.176:5000/api/auth";
+  const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
     if (!username || !email || !password) {
-      Alert.alert("Error", "Please fill all fields");
-      return;
+      return Alert.alert("Validation", "Please fill all fields");
     }
 
     try {
-      console.log("[REGISTER] sending:", { username, email, password });
+      setLoading(true);
+      // ✅ send "username" instead of "name"
+      const res = await api.post("/auth/register", { username, email, password });
 
-      const res = await fetch(`${API}/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password }),
-      });
-
-      const data = await res.json();
-      console.log("[REGISTER] response:", res.status, data);
-
-      if (res.ok) {
-        Alert.alert("Success", "Registered successfully!");
-        navigation.navigate("Login");
+      if (res.data?.user && res.data?.token) {
+        await register(res.data.user, res.data.token);
       } else {
-        Alert.alert("Error", data.message || "Something went wrong");
+        Alert.alert("Error", "Invalid response from server");
       }
-    } catch (err) {
-      console.error("Register error:", err);
-      Alert.alert("Error", "Network request failed");
+    } catch (error) {
+      console.error("Register error:", error.response?.data || error.message);
+      Alert.alert("Error", error.response?.data?.message || "Registration failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -45,7 +42,8 @@ export default function RegisterScreen({ navigation }) {
 
       <TextInput
         style={styles.input}
-        placeholder="Username"
+        placeholder="Username" // ✅ updated label
+        autoCapitalize="none"
         value={username}
         onChangeText={setUsername}
       />
@@ -53,10 +51,9 @@ export default function RegisterScreen({ navigation }) {
       <TextInput
         style={styles.input}
         placeholder="Email"
+        autoCapitalize="none"
         value={email}
         onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
       />
 
       <TextInput
@@ -67,19 +64,22 @@ export default function RegisterScreen({ navigation }) {
         onChangeText={setPassword}
       />
 
-      <Button title="Register" onPress={handleRegister} />
+      <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
+        <Text style={styles.buttonText}>{loading ? "Registering..." : "Register"}</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => navigation.navigate(ROUTES.LOGIN)}>
+        <Text style={styles.link}>Already have an account? Login</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 20 },
-  title: { fontSize: 24, marginBottom: 20, textAlign: "center" },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 10,
-    marginBottom: 10,
-    borderRadius: 5,
-  },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
+  input: { borderWidth: 1, borderColor: "#ccc", padding: 10, marginBottom: 15, borderRadius: 8 },
+  button: { backgroundColor: "#007AFF", padding: 15, borderRadius: 8, alignItems: "center" },
+  buttonText: { color: "#fff", fontWeight: "bold" },
+  link: { marginTop: 15, color: "#007AFF", textAlign: "center" },
 });

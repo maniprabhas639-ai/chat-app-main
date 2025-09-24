@@ -4,11 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-  "start": "expo start",
-  "android": "expo start --android",
-  "ios": "expo start --ios",
-  "web": "expo start --web"
-},
+    "start": "cd chatapp-clean && npx expo start",
+    "android": "cd chatapp-clean && npx expo start --android",
+    "ios": "cd chatapp-clean && npx expo start --ios",
+    "web": "cd chatapp-clean && npx expo start --web"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

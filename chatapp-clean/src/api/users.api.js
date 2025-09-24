@@ -1,18 +1,24 @@
 // src/api/users.api.js
-import { API_BASE_URL } from "../config/config";
-import { getToken } from "./auth.storage";
+import api from "./axiosInstance";
 
-export async function getUsers() {
-  const token = await getToken();
-  const res = await fetch(`${API_BASE_URL}/users`, {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `Failed to fetch users (${res.status})`);
+// ✅ Fetch all users with online + lastSeen
+export const fetchUsers = async () => {
+  try {
+    const res = await api.get("/users");
+    return res.data; // { users: [...] }
+  } catch (err) {
+    console.error("fetchUsers error:", err?.response?.data || err.message);
+    throw err;
   }
-  return res.json();
-}
+};
+
+// ✅ Get presence (online/lastSeen) for a specific user
+export const getPresence = async (userId) => {
+  try {
+    const res = await api.get(`/users/${userId}/presence`);
+    return res.data; // { userId, online, lastSeen }
+  } catch (err) {
+    console.error("getPresence error:", err?.response?.data || err.message);
+    throw err;
+  }
+};

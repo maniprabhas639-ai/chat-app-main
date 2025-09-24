@@ -1,63 +1,62 @@
-// AppNavigator.js
-import React from "react";
+// src/navigation/AppNavigator.js
+import React, { useContext } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { useAuth } from "../context/AuthContext"; // ✅ custom hook
+
+import { AuthContext } from "../context/AuthContext";
+import { ROUTES } from "./routes";
+
+// Defensive imports: handle both `module.default` and module itself.
+// This avoids "invalid component prop" errors when bundler interop differs.
+import HomeScreenModule from "../screens/HomeScreen";
+import ChatScreenModule from "../screens/ChatScreen";
+import LoginScreenModule from "../screens/LoginScreen";
+import RegisterScreenModule from "../screens/RegisterScreen";
+
+const HomeScreen = HomeScreenModule?.default || HomeScreenModule;
+const ChatScreen = ChatScreenModule?.default || ChatScreenModule;
+const LoginScreen = LoginScreenModule?.default || LoginScreenModule;
+const RegisterScreen = RegisterScreenModule?.default || RegisterScreenModule;
 
 const Stack = createNativeStackNavigator();
 
+function AuthStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name={ROUTES.LOGIN} component={LoginScreen} />
+      <Stack.Screen name={ROUTES.REGISTER} component={RegisterScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function MainStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name={ROUTES.HOME}
+        component={HomeScreen}
+        options={{ title: "Home" }}
+      />
+      <Stack.Screen
+        name={ROUTES.CHAT}
+        component={ChatScreen}
+        options={{ title: "Chat" }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 export default function AppNavigator() {
-  const { userToken, loading } = useAuth();
+  const { user, loading } = useContext(AuthContext) || {};
 
-  // ✅ Load screens safely
-  const HomeScreen     = require("../screens/HomeScreen").default;
-  const ChatScreen     = require("../screens/ChatScreen").default;
-  const LoginScreen    = require("../screens/LoginScreen").default;
-  const RegisterScreen = require("../screens/RegisterScreen").default;
-
-  // 🚀 Show splash or loader while checking AsyncStorage token
-  if (loading) return null;
+  // tiny splash while restoring auth state
+  if (loading) {
+    return null;
+  }
 
   return (
     <NavigationContainer>
-      <Stack.Navigator>
-        {userToken ? (
-          <>
-            {/* ✅ Home Screen */}
-            <Stack.Screen
-              name="Home"
-              component={HomeScreen}
-              options={{ headerShown: true, title: "Home" }}
-            />
-
-            {/* ✅ Chat Screen (user navigates with params: { userId, username }) */}
-            <Stack.Screen
-              name="Chat"
-              component={ChatScreen}
-              options={({ route }) => ({
-                headerShown: true,
-                title: route.params?.username
-                  ? `Chat with ${route.params.username}`
-                  : "Chat",
-              })}
-            />
-          </>
-        ) : (
-          <>
-            {/* ✅ Auth Screens */}
-            <Stack.Screen
-              name="Login"
-              component={LoginScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Register"
-              component={RegisterScreen}
-              options={{ headerShown: false }}
-            />
-          </>
-        )}
-      </Stack.Navigator>
+      {user ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );
 }

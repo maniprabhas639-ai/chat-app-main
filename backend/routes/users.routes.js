@@ -1,53 +1,56 @@
-// routes/users.routes.js
+// backend/routes/users.routes.js
 const express = require("express");
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
-
 const router = express.Router();
+const User = require("../models/User");
+const auth = require("../middleware/auth");
 
-// Middleware: verify JWT
-const authMiddleware = (req, res, next) => {
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.split(" ")[1]
-    : null;
-
-  if (!token) {
-    return res.status(401).json({ message: "No token provided" });
-  }
-
+// ✅ Get all users (excluding the logged-in user)
+router.get("/", auth, async (req, res) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "supersecret");
-    req.user = decoded;
-    next();
-  } catch (err) {
-    console.error("❌ JWT Error:", err);
-    return res.status(403).json({ message: "Invalid or expired token" });
-  }
-};
+    const users = await User.find({ _id: { $ne: req.user.id } })
+      .select("username email online lastSeen")
+      .lean();
 
-// ✅ Get current user
-router.get("/me", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select("-passwordHash");
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    res.json(user);
+    const result = (users || []).map((u) => ({
+      _id: String(u._id),
+      username: u.username || u.email || "Unknown User",
+      email: u.email || null,
+      online: !!u.online,        // keep DB value
+      isOnline: !!u.online,      // alias for frontend
+      lastSeen: u.lastSeen || null,
+    }));
+
+    return res.json(result);
   } catch (err) {
-    console.error("🔥 /me error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Users fetch error:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
-// ✅ Get all users (protected)
-router.get("/", authMiddleware, async (_req, res) => {
+// ✅ Get a single user by ID
+router.get("/:id", auth, async (req, res) => {
   try {
-    const users = await User.find().select("-passwordHash");
-    res.json(users);
+    const u = await User.findById(req.params.id)
+      .select("username email online lastSeen")
+      .lean();
+
+    if (!u) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const payload = {
+      _id: String(u._id),
+      username: u.username || u.email || "Unknown User",
+      email: u.email || null,
+      online: !!u.online,
+      isOnline: !!u.online,
+      lastSeen: u.lastSeen || null,
+    };
+
+    return res.json(payload);
   } catch (err) {
-    console.error("🔥 Get users error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ User fetch error:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 

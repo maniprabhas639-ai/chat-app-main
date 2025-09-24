@@ -1,50 +1,36 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Button,
-  StyleSheet,
-  Alert,
-} from "react-native";
-import { useAuth } from "../context/AuthContext";
+// src/screens/LoginScreen.js
+import React, { useState, useContext } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { AuthContext } from "../context/AuthContext";
+import api from "../api/axiosInstance";
+import { ROUTES } from "../navigation/routes";
 
 export default function LoginScreen({ navigation }) {
+  const { login } = useContext(AuthContext);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { login } = useAuth();
-
-  const API = "http://192.168.43.176:5000/api/auth"; // 👈 change if IP changes
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please enter email and password");
-      return;
+      return Alert.alert("Validation", "Please enter email and password");
     }
 
     try {
-      console.log("[LOGIN] sending:", { email, password });
+      setLoading(true);
+      const res = await api.post("/auth/login", { email, password });
 
-      const res = await fetch(`${API}/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-      console.log("[LOGIN] response:", res.status, data);
-
-      if (res.ok) {
-        Alert.alert("Success", "Login successful!");
-        // 👇 Save user + token in context
-        login(data.user, data.token);
-        navigation.navigate("Home");
+      if (res.data?.user && res.data?.token) {
+        await login(res.data.user, res.data.token);
       } else {
-        Alert.alert("Error", data.message || "Invalid credentials");
+        Alert.alert("Error", "Invalid response from server");
       }
-    } catch (err) {
-      console.error("Login error:", err);
-      Alert.alert("Error", "Network request failed");
+    } catch (error) {
+      console.error("Login error:", error.response?.data || error.message);
+      Alert.alert("Error", error.response?.data?.message || "Login failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -55,45 +41,36 @@ export default function LoginScreen({ navigation }) {
       <TextInput
         style={styles.input}
         placeholder="Email"
+        autoCapitalize="none"
+        keyboardType="email-address"   // ✅ better for email
         value={email}
         onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
       />
 
       <TextInput
         style={styles.input}
         placeholder="Password"
-        secureTextEntry
+        secureTextEntry   // ✅ keeps password hidden
         value={password}
         onChangeText={setPassword}
       />
 
-      <Button title="Login" onPress={handleLogin} />
+      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+        <Text style={styles.buttonText}>{loading ? "Logging in..." : "Login"}</Text>
+      </TouchableOpacity>
 
-      <Text
-        style={styles.link}
-        onPress={() => navigation.navigate("Register")}
-      >
-        Don’t have an account? Register
-      </Text>
+      <TouchableOpacity onPress={() => navigation.navigate(ROUTES.REGISTER)}>
+        <Text style={styles.link}>Don't have an account? Register</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 20 },
-  title: { fontSize: 24, marginBottom: 20, textAlign: "center" },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 10,
-    marginBottom: 10,
-    borderRadius: 5,
-  },
-  link: {
-    marginTop: 15,
-    color: "blue",
-    textAlign: "center",
-  },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
+  input: { borderWidth: 1, borderColor: "#ccc", padding: 10, marginBottom: 15, borderRadius: 8 },
+  button: { backgroundColor: "#007AFF", padding: 15, borderRadius: 8, alignItems: "center" },
+  buttonText: { color: "#fff", fontWeight: "bold" },
+  link: { marginTop: 15, color: "#007AFF", textAlign: "center" },
 });

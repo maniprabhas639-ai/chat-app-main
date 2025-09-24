@@ -1,20 +1,13 @@
-const mongoose = require('mongoose');
+// backend/models/Conversation.js
+import mongoose from "mongoose";
 
 const conversationSchema = new mongoose.Schema(
   {
-    participants: [
-      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
-    ],
-    lastMessage: {
-      text: { type: String, default: '' },
-      sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      createdAt: { type: Date }
-    }
+    participants: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    lastMessage: { type: String },
   },
   { timestamps: true }
 );
 
-// Ensure uniqueness of two-participant conversations by sorting participant IDs
-conversationSchema.index({ participants: 1 }, { unique: false });
-
-module.exports = mongoose.model('Conversation', conversationSchema);
+const Conversation = mongoose.model("Conversation", conversationSchema);
+export default Conversation;
