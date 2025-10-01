@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "start": "npx expo@53.0.22 start",
-    "android": "npx expo@53.0.22 start --android",
-    "ios": "npx expo@53.0.22 start --ios",
-    "web": "npx expo@53.0.22 start --web",
-    "expo": "npx expo@53.0.22"
+     "start": "npx expo start",
+  "android": "npx expo start --android",
+  "ios": "npx expo start --ios",
+  "web": "npx expo start --web",
+  "build:web": "npx expo export --platform web",
+  "expo": "npx expo"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
