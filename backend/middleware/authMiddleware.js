@@ -15,7 +15,6 @@ const auth = async (req, res, next) => {
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
-      // ⚠️ Differentiate JWT errors
       if (err.name === "TokenExpiredError") {
         return res.status(401).json({ message: "jwt expired" });
       }
@@ -25,12 +24,20 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const user = await User.findById(decoded.id).select("_id name email");
+    // FIXED: use `username` instead of incorrect `name`
+    const user = await User.findById(decoded.id).select("_id username email");
     if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
 
-    req.user = { id: user._id.toString(), name: user.name, email: user.email };
+    req.user = {
+      id: user._id.toString(),
+      username: user.username,
+      email: user.email
+    };
+
+    req.userId = user._id.toString();
+
     next();
   } catch (err) {
     console.error("Auth middleware error:", err.message);
