@@ -6,6 +6,9 @@
     "orientation": "portrait",
     "newArchEnabled": true,
     "jsEngine": "hermes",
-    "assetBundlePatterns": ["**/*"]
+    "assetBundlePatterns": ["**/*"],
+    "extra": {
+      "API_URL": "https://chat-app-backend-sgu2.onrender.com/api"
+    }
   }
 }

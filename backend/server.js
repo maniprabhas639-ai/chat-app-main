@@ -12,11 +12,44 @@ const app = express();
 
 // ------------------- Middleware -------------------
 app.use(express.json());
-app.use(cors());
+
+// Dynamic CORS: read allowed origins from CLIENT_ORIGIN env (comma-separated)
+// If CLIENT_ORIGIN is empty, allow all origins (useful for internal/testing).
+const rawOrigins = (process.env.CLIENT_ORIGIN || "").split(",").map(s => s.trim()).filter(Boolean);
+const allowAll = rawOrigins.length === 0;
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow non-browser requests (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    if (allowAll) {
+      console.log("CORS: allowing origin (no CLIENT_ORIGIN set):", origin);
+      return callback(null, true);
+    }
+
+    // exact-match allowed origins
+    if (rawOrigins.includes(origin)) {
+      console.log("CORS: allowed origin:", origin);
+      return callback(null, true);
+    }
+
+    console.warn("CORS: blocked origin:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+}));
 
 // ------------------- Database -------------------
-connectDB();
-
+(async () => {
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error("❌ Fatal: database connection failed at startup:", err.message);
+    // Give an explicit exit so Render will restart the service (fail-fast)
+    process.exit(1);
+  }
+})();
 // ------------------- Route Loader -------------------
 /**
  * Dynamically mounts Express routers and logs status
