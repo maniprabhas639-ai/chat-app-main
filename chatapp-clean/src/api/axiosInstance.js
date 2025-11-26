@@ -8,12 +8,19 @@ import { getSocket } from "./socket";
  * Determine baseURL:
  */
 const resolveBaseURL = () => {
+  // prefer explicit API_BASE_URL (expo extra or env)
   if (typeof API_BASE_URL === "string" && API_BASE_URL.length) return API_BASE_URL;
   if (typeof API_URL === "string" && API_URL.length) {
     const t = API_URL.trim().replace(/\/+$/g, "");
     if (/\/api(\/|$)/.test(t)) return t;
     return t + "/api";
   }
+
+  // last resort: runtime env (web builds)
+  if (typeof process !== "undefined" && process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL.replace(/\/+$/g, "");
+  }
+
   return "http://localhost:5000/api";
 };
 
