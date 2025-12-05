@@ -240,87 +240,104 @@ export default function ChatScreen({ route }) {
     }
   }, [otherUserId]);
 
-  /* ---------- send message (optimistic) ---------- */
-  const sendMsg = useCallback(async () => {
-    const trimmed = (text || "").trim();
-    if (!trimmed || !otherUserId || !user)
-      return Alert.alert("Error", "Invalid conversation partner or user.");
 
-    const senderId = user?._id || user?.id;
-    const tempId = `tmp-${Date.now()}`;
+  /* ---------- send message (optimistic, socket-first) ---------- */
+const sendMsg = useCallback(async () => {
+  const trimmed = (text || "").trim();
+  if (!trimmed || !otherUserId || !user) {
+    return Alert.alert("Error", "Invalid conversation partner or user.");
+  }
 
-    const optimistic = {
-      _id: tempId,
-      sender: senderId,
-      receiver: otherUserId,
-      content: trimmed,
-      text: trimmed,
-      delivered: false,
-      seen: false,
-      read: false,
-      createdAt: new Date().toISOString(),
-      temp: true,
-    };
+  const senderId = user?._id || user?.id;
+  const tempId = `tmp-${Date.now()}`;
 
-    setMessages((prev) => {
-      messageIdsRef.current.add(tempId);
-      return [...prev, optimistic];
-    });
-    setText("");
+  // Optimistic message (UI)
+  const optimistic = {
+    _id: tempId,
+    sender: senderId,
+    receiver: otherUserId,
+    content: trimmed,
+    text: trimmed,
+    delivered: false,
+    seen: false,
+    read: false,
+    createdAt: new Date().toISOString(),
+    temp: true,
+  };
 
-    try {
+  // Add optimistic message to UI
+  setMessages((prev) => {
+    messageIdsRef.current.add(tempId);
+    return [...prev, optimistic];
+  });
+  setText("");
+
+  try {
+    // Prefer socket for low-latency send
+    const sock = getSocket();
+    if (sock && sock.connected) {
+      // Emit ONCE via safeEmit
+      safeEmit("sendMessage", {
+        message: { sender: senderId, receiver: otherUserId, content: trimmed },
+      });
+
+      // We do not await an HTTP response here — the server will send back receiveMessage via socket,
+      // and your existing "onReceive" handler will replace the optimistic message when the persisted msg arrives.
+    } else {
+      // Socket not available — fall back to HTTP POST (existing behavior)
       const apiRes = await apiSendMessage({
         receiver: otherUserId,
         content: trimmed,
       });
 
-      let normalized = null;
-      if (apiRes && apiRes._id && (apiRes.content || apiRes.text)) {
-        if (!apiRes.text && apiRes.content) apiRes.text = String(apiRes.content);
-        if (apiRes.seen === undefined && apiRes.read !== undefined)
-          apiRes.seen = Boolean(apiRes.read);
-        normalized = apiRes;
+      // normalize/replace optimistic message with server response (existing flow)
+      let normalized = apiRes;
+      if (normalized && normalized._id) {
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m._id === tempId);
+          if (idx >= 0) {
+            const newArr = [...prev];
+            const oldTempId = newArr[idx]._id;
+            newArr[idx] = normalized;
+            messageIdsRef.current.delete(oldTempId);
+            messageIdsRef.current.add(normalized._id);
+            return newArr.filter(
+              (v, i) => !(i !== idx && String(v._id) === String(normalized._id))
+            );
+          } else {
+            if (messageIdsRef.current.has(normalized._id)) return prev;
+            messageIdsRef.current.add(normalized._id);
+            return [...prev, normalized];
+          }
+        });
       } else {
-        const raw = apiRes?.message ?? apiRes?.data ?? apiRes;
-        normalized = normalizeMessage(raw);
-      }
-
-      if (!normalized || !normalized._id)
-        throw new Error("Invalid response from sendMessage");
-
-      setMessages((prev) => {
-        const idx = prev.findIndex((m) => m._id === tempId);
-        if (idx >= 0) {
-          const newArr = [...prev];
-          const oldTempId = newArr[idx]._id;
-          newArr[idx] = normalized;
-          messageIdsRef.current.delete(oldTempId);
-          messageIdsRef.current.add(normalized._id);
-          return newArr.filter(
-            (v, i) => !(i !== idx && String(v._id) === String(normalized._id))
-          );
-        } else {
-          if (messageIdsRef.current.has(normalized._id)) return prev;
-          messageIdsRef.current.add(normalized._id);
-          return [...prev, normalized];
-        }
-      });
-    } catch (err) {
-      console.error(
-        "sendMessage error:",
-        err?.response?.data || err?.message || err
-      );
-      Alert.alert("Send failed", "Could not send message.");
-      setMessages((prev) => prev.filter((m) => m._id !== tempId));
-      messageIdsRef.current.delete(tempId);
-    } finally {
-      scrollToEnd();
-      if (localTypingRef.current && getSocket()) {
-        safeEmit("stopTyping", { to: otherUserId });
-        localTypingRef.current = false;
+        // unexpected server reply -> leave optimistic (server should emit receiveMessage later)
+        console.warn("sendMsg: unexpected HTTP response from apiSendMessage", apiRes);
       }
     }
-  }, [text, otherUserId, user, scrollToEnd]);
+  } catch (err) {
+    console.error(
+      "sendMessage error:",
+      err?.response?.data || err?.message || err
+    );
+    // If HTTP failed and socket wasn't available, remove optimistic message
+    setMessages((prev) => prev.filter((m) => m._id !== tempId));
+    messageIdsRef.current.delete(tempId);
+    Alert.alert(
+      "Send failed",
+      err?.userFriendlyMessage || err?.message || "Could not send message."
+    );
+  } finally {
+    // scroll and stop typing as before
+    scrollToEnd();
+    if (localTypingRef.current && getSocket()) {
+      safeEmit("stopTyping", { to: otherUserId });
+      localTypingRef.current = false;
+    }
+  }
+}, [text, otherUserId, user, scrollToEnd]);
+
+
 
   /* ---------- socket lifecycle ---------- */
   useEffect(() => {

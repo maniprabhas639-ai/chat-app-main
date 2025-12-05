@@ -31,11 +31,12 @@ const baseURL = resolveBaseURL();
  */
 const api = axios.create({
   baseURL,
-  timeout: 15000,
+  timeout: 30000, // increased from 15s -> 30s to avoid spurious timeouts
   headers: {
     "Content-Type": "application/json",
   },
 });
+
 
 /* ---------- Token cache & helpers ---------- */
 /**
