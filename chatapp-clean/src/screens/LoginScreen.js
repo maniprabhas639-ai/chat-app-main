@@ -36,41 +36,110 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
+      <View style={styles.card}>
+        <Text style={styles.title}>Login</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"   // ✅ better for email
-        value={email}
-        onChangeText={setEmail}
-      />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#6b7280"
+          autoCapitalize="none"
+          keyboardType="email-address"   // ✅ better for email
+          value={email}
+          onChangeText={setEmail}
+        />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry   // ✅ keeps password hidden
-        value={password}
-        onChangeText={setPassword}
-      />
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor="#6b7280"
+          secureTextEntry   // ✅ keeps password hidden
+          value={password}
+          onChangeText={setPassword}
+        />
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? "Logging in..." : "Login"}</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+          <Text style={styles.buttonText}>{loading ? "Logging in..." : "Sign in"}</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate(ROUTES.REGISTER)}>
-        <Text style={styles.link}>Don't have an account? Register</Text>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate(ROUTES.REGISTER)}>
+          <Text style={styles.link}>
+            No account? <Text style={styles.linkHighlight}>Register</Text>
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 20 },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
-  input: { borderWidth: 1, borderColor: "#ccc", padding: 10, marginBottom: 15, borderRadius: 8 },
-  button: { backgroundColor: "#007AFF", padding: 15, borderRadius: 8, alignItems: "center" },
-  buttonText: { color: "#fff", fontWeight: "bold" },
-  link: { marginTop: 15, color: "#007AFF", textAlign: "center" },
+  // full-screen dark background, center card
+  container: {
+    flex: 1,
+    backgroundColor: "#020617", // very dark blue/black
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+
+  // card similar to the image
+  card: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#020819", // slightly lighter than bg
+    borderRadius: 18,
+    padding: 24,
+    // subtle border + shadow
+    borderWidth: 1,
+    borderColor: "#111827",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+
+  title: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#e5e7eb",
+    marginBottom: 24,
+  },
+
+  input: {
+    backgroundColor: "#020617",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+    fontSize: 14,
+    color: "#e5e7eb",
+  },
+
+  // fake gradient look with strong pink → purple tone
+  button: {
+    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    // approximation of gradient using solid color (safe for RN)
+    backgroundColor: "#ec4899", // pink-ish
+  },
+
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#f9fafb",
+  },
+
+  link: {
+    marginTop: 18,
+    fontSize: 13,
+    color: "#e5e7eb",
+    textAlign: "left",
+  },
+
+  linkHighlight: {
+    textDecorationLine: "underline",
+  },
 });

@@ -1,5 +1,12 @@
 // src/screens/ChatScreen.js
-import React, { useEffect, useState, useContext, useRef, useMemo, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useContext,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import {
   View,
   Text,
@@ -19,6 +26,8 @@ import {
 } from "../api/messages.api";
 import { connectSocket, getSocket } from "../api/socket";
 import { safeOn, safeOff, safeEmit } from "../api/socketUtils";
+import { LinearGradient } from "expo-linear-gradient";
+
 
 /* ---------- helpers ---------- */
 const toIdString = (v) => {
@@ -30,19 +39,25 @@ const toIdString = (v) => {
 
 /**
  * Normalize many server shapes into a stable client message object
- * - content: the canonical message body (matches DB)
- * - text: friendly UI field (mirrors content)
- * - seen/read: both set for compatibility
  */
 const normalizeMessage = (raw) => {
   if (!raw) return null;
   try {
     const m = raw.message ?? raw.msg ?? raw;
-    const idCandidate = m._id ?? m.id ?? (m._doc && (m._doc._id || m._doc.id));
-    const _id = idCandidate ? String(idCandidate) : `tmp-${Date.now()}-${Math.random()}`;
+    const idCandidate =
+      m._id ?? m.id ?? (m._doc && (m._doc._id || m._doc.id));
+    const _id = idCandidate
+      ? String(idCandidate)
+      : `tmp-${Date.now()}-${Math.random()}`;
 
-    const sender = typeof m.sender === "object" ? String(m.sender._id || m.sender.id || "") : String(m.sender || "");
-    const receiver = typeof m.receiver === "object" ? String(m.receiver._id || m.receiver.id || "") : String(m.receiver || "");
+    const sender =
+      typeof m.sender === "object"
+        ? String(m.sender._id || m.sender.id || "")
+        : String(m.sender || "");
+    const receiver =
+      typeof m.receiver === "object"
+        ? String(m.receiver._id || m.receiver.id || "")
+        : String(m.receiver || "");
 
     const content = (m.content ?? m.text ?? m.body ?? m.message ?? "") + "";
     const text = String(content);
@@ -50,7 +65,11 @@ const normalizeMessage = (raw) => {
     const seen = Boolean(m.seen || m.read || m.seenAt || m.readAt);
     const delivered = Boolean(m.delivered || m.deliveredAt);
 
-    const createdAt = m.createdAt ? new Date(m.createdAt).toISOString() : m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString();
+    const createdAt = m.createdAt
+      ? new Date(m.createdAt).toISOString()
+      : m.timestamp
+      ? new Date(m.timestamp).toISOString()
+      : new Date().toISOString();
 
     return {
       _id,
@@ -60,7 +79,7 @@ const normalizeMessage = (raw) => {
       text,
       delivered,
       seen,
-      read: seen, // keep 'read' for UI compatibility
+      read: seen,
       createdAt,
       raw: m,
       temp: Boolean(m.temp || String(_id).startsWith("tmp-")),
@@ -71,6 +90,15 @@ const normalizeMessage = (raw) => {
   }
 };
 
+const formatTime = (isoString) => {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); // e.g. 9:00 PM
+};
+
+
+
 /* ---------- component ---------- */
 export default function ChatScreen({ route }) {
   const { user } = useContext(AuthContext);
@@ -80,20 +108,47 @@ export default function ChatScreen({ route }) {
     if (rawParams.user) return rawParams.user;
     if (rawParams.recipient) return rawParams.recipient;
     if (rawParams.otherUser) return rawParams.otherUser;
+
     const id = rawParams.userId || rawParams._id || rawParams.id || null;
-    const name = rawParams.username || rawParams.name || rawParams.displayName || rawParams.email || null;
+    const name =
+      rawParams.username ||
+      rawParams.name ||
+      rawParams.displayName ||
+      rawParams.email ||
+      null;
+
     if (id || name) return { _id: id, username: name, name };
-    if (rawParams && typeof rawParams === "object" && (rawParams._id || rawParams.username || rawParams.email)) return rawParams;
+
+    if (
+      rawParams &&
+      typeof rawParams === "object" &&
+      (rawParams._id || rawParams.username || rawParams.email)
+    )
+      return rawParams;
+
     return null;
   }, [rawParams]);
 
-  const otherUserId = useMemo(() => toIdString(otherUser?._id || otherUser?.id), [otherUser]);
-  const otherUserName = useMemo(() => (otherUser && (otherUser.username || otherUser.name || otherUser.email)) || "Unknown User", [otherUser]);
+  const otherUserId = useMemo(
+    () => toIdString(otherUser?._id || otherUser?.id),
+    [otherUser]
+  );
+  const otherUserName = useMemo(
+    () =>
+      (otherUser &&
+        (otherUser.username || otherUser.name || otherUser.email)) ||
+      "Unknown User",
+    [otherUser]
+  );
 
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
-  const [partnerPresence, setPartnerPresence] = useState({ online: false, lastSeen: null, username: otherUserName });
+  const [partnerPresence, setPartnerPresence] = useState({
+    online: false,
+    lastSeen: null,
+    username: otherUserName,
+  });
 
   const flatListRef = useRef(null);
   const messageIdsRef = useRef(new Set());
@@ -102,50 +157,104 @@ export default function ChatScreen({ route }) {
   const partnerTypingTimerRef = useRef(null);
 
   const scrollToEnd = useCallback(() => {
-    try { flatListRef.current?.scrollToEnd({ animated: true }); } catch {}
+    try {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    } catch {}
   }, []);
 
-  /* ---------- load messages ---------- */
+  /* ---------- load messages (initial) ---------- */
   const loadMessages = useCallback(async () => {
     if (!otherUserId) return;
     try {
       const res = await apiFetchMessages(otherUserId);
-      // apiFetchMessages should return an array of normalized message objects, but support multiple shapes
-      const rawMsgs = Array.isArray(res) ? res : Array.isArray(res?.messages) ? res.messages : res?.data ?? [];
+      const rawMsgs = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.messages)
+        ? res.messages
+        : res?.data ?? [];
+
       const unique = [];
       const ids = new Set();
+
       for (const r of rawMsgs) {
-        const m = typeof r === "object" && r._id ? (r._id && r.content ? r : normalizeMessage(r)) : normalizeMessage(r);
+        const m =
+          typeof r === "object" && r._id
+            ? r._id && r.content
+              ? r
+              : normalizeMessage(r)
+            : normalizeMessage(r);
         if (!m) continue;
         if (!ids.has(m._id)) {
           ids.add(m._id);
           unique.push(m);
         }
       }
+
       messageIdsRef.current = new Set(unique.map((m) => m._id));
       setMessages(unique);
     } catch (err) {
-      console.error("loadMessages error:", err?.response?.data || err?.message || err);
+      console.error(
+        "loadMessages error:",
+        err?.response?.data || err?.message || err
+      );
     } finally {
       setTimeout(scrollToEnd, 80);
     }
   }, [otherUserId, scrollToEnd]);
 
+  /* ---------- silent refresh to keep ticks in sync ---------- */
+  const refreshMessagesSilent = useCallback(async () => {
+    if (!otherUserId) return;
+    try {
+      const res = await apiFetchMessages(otherUserId);
+      const rawMsgs = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.messages)
+        ? res.messages
+        : res?.data ?? [];
+
+      const unique = [];
+      const ids = new Set();
+
+      for (const r of rawMsgs) {
+        const m =
+          typeof r === "object" && r._id
+            ? r._id && r.content
+              ? r
+              : normalizeMessage(r)
+            : normalizeMessage(r);
+        if (!m) continue;
+        if (!ids.has(m._id)) {
+          ids.add(m._id);
+          unique.push(m);
+        }
+      }
+
+      messageIdsRef.current = new Set(unique.map((m) => m._id));
+      setMessages(unique);
+    } catch (err) {
+      console.error(
+        "refreshMessagesSilent error:",
+        err?.response?.data || err?.message || err
+      );
+    }
+  }, [otherUserId]);
+
   /* ---------- send message (optimistic) ---------- */
   const sendMsg = useCallback(async () => {
     const trimmed = (text || "").trim();
-    if (!trimmed || !otherUserId || !user) return Alert.alert("Error", "Invalid conversation partner or user.");
+    if (!trimmed || !otherUserId || !user)
+      return Alert.alert("Error", "Invalid conversation partner or user.");
 
     const senderId = user?._id || user?.id;
     const tempId = `tmp-${Date.now()}`;
 
-    // Optimistic UI message (content = backend field, text = UI field)
     const optimistic = {
       _id: tempId,
       sender: senderId,
       receiver: otherUserId,
-      content: trimmed,                // canonical DB field
-      text: trimmed,                   // UI convenience
+      content: trimmed,
+      text: trimmed,
       delivered: false,
       seen: false,
       read: false,
@@ -153,51 +262,55 @@ export default function ChatScreen({ route }) {
       temp: true,
     };
 
-    // Add optimistic message
-    setMessages((prev) => { messageIdsRef.current.add(tempId); return [...prev, optimistic]; });
+    setMessages((prev) => {
+      messageIdsRef.current.add(tempId);
+      return [...prev, optimistic];
+    });
     setText("");
 
     try {
-      const apiRes = await apiSendMessage({ receiver: otherUserId, content: trimmed });
+      const apiRes = await apiSendMessage({
+        receiver: otherUserId,
+        content: trimmed,
+      });
 
-      // apiSendMessage may return:
-      //  - a normalized object { _id, sender, receiver, content, ... }
-      //  - or a raw server doc { _id, content, sender: {...}, ... }
-      //  - or { message: <doc> }
       let normalized = null;
       if (apiRes && apiRes._id && (apiRes.content || apiRes.text)) {
-        // assume already normalized-ish
-        // ensure 'text' exists
         if (!apiRes.text && apiRes.content) apiRes.text = String(apiRes.content);
-        if (apiRes.seen === undefined && apiRes.read !== undefined) apiRes.seen = Boolean(apiRes.read);
+        if (apiRes.seen === undefined && apiRes.read !== undefined)
+          apiRes.seen = Boolean(apiRes.read);
         normalized = apiRes;
       } else {
         const raw = apiRes?.message ?? apiRes?.data ?? apiRes;
         normalized = normalizeMessage(raw);
       }
 
-      if (!normalized || !normalized._id) throw new Error("Invalid response from sendMessage");
+      if (!normalized || !normalized._id)
+        throw new Error("Invalid response from sendMessage");
 
-      // Replace optimistic temp with server message or append deduped
       setMessages((prev) => {
         const idx = prev.findIndex((m) => m._id === tempId);
         if (idx >= 0) {
           const newArr = [...prev];
+          const oldTempId = newArr[idx]._id;
           newArr[idx] = normalized;
-          messageIdsRef.current.delete(tempId);
+          messageIdsRef.current.delete(oldTempId);
           messageIdsRef.current.add(normalized._id);
-          // dedupe any other occurrences of same id
-          return newArr.filter((v, i) => !(i !== idx && String(v._id) === String(normalized._id)));
+          return newArr.filter(
+            (v, i) => !(i !== idx && String(v._id) === String(normalized._id))
+          );
         } else {
-          // temp not found (socket race) -> append if not duplicate
           if (messageIdsRef.current.has(normalized._id)) return prev;
           messageIdsRef.current.add(normalized._id);
           return [...prev, normalized];
         }
       });
     } catch (err) {
-      console.error("sendMessage error:", err?.response?.data || err?.message || err);
-      Alert.alert("Send failed", err?.userFriendlyMessage || "Could not send message.");
+      console.error(
+        "sendMessage error:",
+        err?.response?.data || err?.message || err
+      );
+      Alert.alert("Send failed", "Could not send message.");
       setMessages((prev) => prev.filter((m) => m._id !== tempId));
       messageIdsRef.current.delete(tempId);
     } finally {
@@ -222,27 +335,24 @@ export default function ChatScreen({ route }) {
       const myId = String(user?._id || user?.id);
       const roomId = [myId, String(otherUserId)].sort().join("_");
 
-      // Ask server to join the conversation room and fetch presence
       safeEmit("joinRoom", roomId);
       safeEmit("getPresence", otherUserId);
 
-      // Handlers
       const onReceive = (raw) => {
         if (!mounted || !raw) return;
         const m = normalizeMessage(raw);
         if (!m) return;
 
-        // If we already know this ID, ignore
         if (messageIdsRef.current.has(m._id)) return;
 
-        // Try to replace a temp message with matching content/sender/receiver
         setMessages((prev) => {
           const tempIdx = prev.findIndex(
             (pm) =>
               pm.temp &&
               String(pm.sender) === String(m.sender) &&
               String(pm.receiver) === String(m.receiver) &&
-              (String(pm.text) === String(m.text) || String(pm.content) === String(m.content))
+              (String(pm.text) === String(m.text) ||
+                String(pm.content) === String(m.content))
           );
 
           if (tempIdx >= 0) {
@@ -251,20 +361,22 @@ export default function ChatScreen({ route }) {
             newArr[tempIdx] = m;
             messageIdsRef.current.delete(oldTempId);
             messageIdsRef.current.add(m._id);
-            return newArr.filter((v, i) => !(i !== tempIdx && String(v._id) === String(m._id)));
+            return newArr.filter(
+              (v, i) =>
+                !(i !== tempIdx && String(v._id) === String(m._id))
+            );
           }
 
-          // otherwise append
           messageIdsRef.current.add(m._id);
           return [...prev, m];
         });
 
-        // If this message was delivered to me, ack delivery
         const myIdLocal = String(user?._id || user?.id);
         if (String(m.receiver) === myIdLocal) {
-          // notify sender that message is delivered (socket)
-          safeEmit("messageDelivered", { messageId: m._id, to: m.sender });
-          // persist delivered in DB as well (best-effort)
+          safeEmit("messageDelivered", {
+            messageId: m._id,
+            to: m.sender,
+          });
           markDelivered(m._id).catch(() => {});
         }
 
@@ -275,7 +387,10 @@ export default function ChatScreen({ route }) {
         if (String(from) === String(otherUserId)) {
           setIsPartnerTyping(true);
           clearTimeout(partnerTypingTimerRef.current);
-          partnerTypingTimerRef.current = setTimeout(() => setIsPartnerTyping(false), 2500);
+          partnerTypingTimerRef.current = setTimeout(
+            () => setIsPartnerTyping(false),
+            2500
+          );
         }
       };
       const onStopTyping = ({ from }) => {
@@ -283,20 +398,35 @@ export default function ChatScreen({ route }) {
       };
       const onUserStatus = ({ userId, online, lastSeen }) => {
         if (String(userId) !== String(otherUserId)) return;
-        setPartnerPresence({ username: otherUserName, online: !!online, lastSeen: online ? null : lastSeen || Date.now() });
+        setPartnerPresence({
+          username: otherUserName,
+          online: !!online,
+          lastSeen: online ? null : lastSeen || Date.now(),
+        });
       };
 
       const onDelivered = ({ messageId }) => {
         if (!messageId) return;
-        setMessages((prev) => prev.map((m) => (String(m._id) === String(messageId) ? { ...m, delivered: true } : m)));
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m._id) === String(messageId)
+              ? { ...m, delivered: true }
+              : m
+          )
+        );
       };
 
       const onSeen = ({ messageId }) => {
         if (!messageId) return;
-        setMessages((prev) => prev.map((m) => (String(m._id) === String(messageId) ? { ...m, seen: true, read: true } : m)));
+        setMessages((prev) =>
+          prev.map((m) =>
+            String(m._id) === String(messageId)
+              ? { ...m, seen: true, read: true }
+              : m
+          )
+        );
       };
 
-      // Subscribe
       safeOn("receiveMessage", onReceive);
       safeOn("typing", onTyping);
       safeOn("stopTyping", onStopTyping);
@@ -310,9 +440,12 @@ export default function ChatScreen({ route }) {
     return () => {
       mounted = false;
       const myId = String(user?._id || user?.id);
-      if (otherUserId && myId) safeEmit("leaveRoom", [myId, String(otherUserId)].sort().join("_"));
+      if (otherUserId && myId)
+        safeEmit(
+          "leaveRoom",
+          [myId, String(otherUserId)].sort().join("_")
+        );
 
-      // Unsubscribe
       safeOff("receiveMessage");
       safeOff("typing");
       safeOff("stopTyping");
@@ -323,77 +456,388 @@ export default function ChatScreen({ route }) {
       clearTimeout(typingTimeoutRef.current);
       clearTimeout(partnerTypingTimerRef.current);
     };
-  }, [otherUserId, loadMessages, otherUserName, user]);
+  }, [otherUserId, loadMessages, otherUserName, user, scrollToEnd]);
+
+  /* ---------- mark incoming messages as seen when I'm viewing this chat ---------- */
+  useEffect(() => {
+    const myId = String(user?._id || user?.id || "");
+    if (!myId) return;
+    if (!messages || messages.length === 0) return;
+
+    messages.forEach((m) => {
+      // if I am the receiver and message is not yet seen/read
+      if (
+        String(m.receiver) === myId &&
+        !m.read &&
+        !m.seen &&
+        m._id // only persisted messages
+      ) {
+        safeEmit("messageSeen", { messageId: m._id, to: m.sender });
+      }
+    });
+  }, [messages, user]);
+
+
+
 
   /* ---------- typing indicator ---------- */
-  const onChangeText = useCallback((val) => {
-    setText(val);
-    const sock = getSocket();
-    if (!sock || !otherUserId) return;
+  const onChangeText = useCallback(
+    (val) => {
+      setText(val);
+      const sock = getSocket();
+      if (!sock || !otherUserId) return;
 
-    if (!localTypingRef.current) {
-      localTypingRef.current = true;
-      safeEmit("typing", { to: otherUserId });
-    }
+      if (!localTypingRef.current) {
+        localTypingRef.current = true;
+        safeEmit("typing", { to: otherUserId });
+      }
 
-    clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      safeEmit("stopTyping", { to: otherUserId });
-      localTypingRef.current = false;
-    }, 900);
-  }, [otherUserId]);
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        safeEmit("stopTyping", { to: otherUserId });
+        localTypingRef.current = false;
+      }, 900);
+    },
+    [otherUserId]
+  );
 
-  /* ---------- render message ---------- */
-  const renderItem = useCallback(({ item }) => {
+const renderItem = useCallback(
+  ({ item }) => {
     const isMe = String(item.sender) === String(user?._id || user?.id);
+
+    // ticks: ✓ when only sent, ✓✓ (blue) when delivered/seen
+    const isDeliveredOrSeen = Boolean(
+      item.delivered || item.read || item.seen
+    );
+    const ticks = isDeliveredOrSeen ? "✓✓" : "✓";
+
+    const timeLabel = formatTime(item.createdAt);
+
     return (
-      <View style={[styles.message, isMe ? styles.myMessage : styles.theirMessage]}>
-        <Text style={[styles.messageText, isMe && { color: "#fff" }]}>{item.text}</Text>
-        {isMe && <Text style={styles.metaText}>{item.read ? "Seen" : item.delivered ? "Delivered" : "Sent"}</Text>}
+      <View
+        style={[
+          styles.messageRow,
+          isMe ? styles.messageRowMe : styles.messageRowThem,
+        ]}
+      >
+        {isMe ? (
+          // 🔹 YOUR messages (right side, white bubble + ticks + time)
+          <View style={[styles.messageBubble, styles.myMessage]}>
+            <Text style={[styles.messageText, styles.myMessageText]}>
+              {item.text}
+            </Text>
+            <View style={styles.metaRow}>
+              <Text style={styles.timeTextMe}>{timeLabel}</Text>
+              <Text
+                style={[
+                  styles.metaText,
+                  isDeliveredOrSeen && styles.metaTextRead,
+                ]}
+              >
+                {ticks}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          // 🔹 THEIR messages (left side, gradient bubble + time)
+          <LinearGradient
+            colors={["#C084FC", "#F0ABFC"]} // purple → pink gradient
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.messageBubble, styles.theirMessage]}
+          >
+            <Text style={[styles.messageText, styles.theirMessageText]}>
+              {item.text}
+            </Text>
+            <View style={styles.metaRowThem}>
+              <Text style={styles.timeTextThem}>{timeLabel}</Text>
+            </View>
+          </LinearGradient>
+        )}
       </View>
     );
-  }, [user]);
+  },
+  [user]
+);
 
+
+
+
+
+
+
+  const statusText = partnerPresence.online
+    ? "Online"
+    : partnerPresence.lastSeen
+    ? `Last seen ${new Date(
+        partnerPresence.lastSeen
+      ).toLocaleString()}`
+    : "Offline";
+
+  /* ---------- render ---------- */
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
-      <View style={{ padding: 12 }}>
-        <Text style={styles.header}>Chat with {partnerPresence.username}</Text>
-        <Text style={{ fontSize: 13, color: partnerPresence.online ? "green" : "#666" }}>
-          {partnerPresence.online ? "Online" : partnerPresence.lastSeen ? `Last seen ${new Date(partnerPresence.lastSeen).toLocaleString()}` : "Offline"}
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={90}
+    >
+      <LinearGradient
+  colors={["#7c3aed", "#6d28d9"]} 
+  start={{ x: 0, y: 0 }}
+  end={{ x: 1, y: 1 }}
+  style={styles.chatSurface}
+>
+
+        {/* header */}
+        <View style={styles.topBar}>
+          <View style={styles.topRow}>
+            <Text style={styles.topName}>{partnerPresence.username}</Text>
+            <Text
+              style={[
+                styles.topStatus,
+                partnerPresence.online && styles.topStatusOnline,
+              ]}
+            >
+              {statusText}
+            </Text>
+          </View>
+        </View>
+
+        {/* messages */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderItem}
+          keyExtractor={(item, idx) => String(item._id || idx)}
+          onContentSizeChange={scrollToEnd}
+          onLayout={scrollToEnd}
+          contentContainerStyle={styles.listContent}
+          ListFooterComponent={
+    isPartnerTyping ? (
+      <View style={styles.typingRow}>
+        <Text style={styles.typingBubble}>
+          {partnerPresence.username} is typing...
         </Text>
-        {isPartnerTyping && <Text style={{ color: "#666", fontSize: 13 }}>{partnerPresence.username} is typing...</Text>}
       </View>
+    ) : null
+  }
+        />
 
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderItem}
-        keyExtractor={(item, idx) => String(item._id || idx)}
-        onContentSizeChange={scrollToEnd}
-        onLayout={scrollToEnd}
-      />
-
-      <View style={styles.inputContainer}>
-        <TextInput style={styles.input} placeholder="Type a message..." value={text} onChangeText={onChangeText} />
-        <TouchableOpacity style={styles.sendButton} onPress={sendMsg}>
-          <Text style={styles.sendText}>Send</Text>
-        </TouchableOpacity>
-      </View>
+        {/* input */}
+        <View style={styles.inputArea}>
+          <View style={styles.composer}>
+            <Text style={styles.micIcon}>＋</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Type a message..."
+              placeholderTextColor="#9ca3af"
+              value={text}
+              onChangeText={onChangeText}
+            />
+          </View>
+          <TouchableOpacity style={styles.sendButton} onPress={sendMsg}>
+            <Text style={styles.sendIcon}>➤</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
     </KeyboardAvoidingView>
   );
 }
 
 /* ---------- styles ---------- */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { fontSize: 18, fontWeight: "bold", textAlign: "center" },
-  message: { padding: 10, marginVertical: 5, marginHorizontal: 10, borderRadius: 10, maxWidth: "75%" },
-  myMessage: { alignSelf: "flex-end", backgroundColor: "#007AFF" },
-  theirMessage: { alignSelf: "flex-start", backgroundColor: "#E5E5EA" },
-  messageText: { color: "#000" },
-  metaText: { marginTop: 6, fontSize: 11, color: "#eee", textAlign: "right" },
-  inputContainer: { flexDirection: "row", padding: 10, borderTopWidth: 1, borderColor: "#ddd", backgroundColor: "#fafafa" },
-  input: { flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 25, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: "#fff" },
-  sendButton: { marginLeft: 10, backgroundColor: "#007AFF", paddingVertical: 10, paddingHorizontal: 20, borderRadius: 25, justifyContent: "center" },
-  sendText: { color: "#fff", fontWeight: "bold" },
+  // outer soft background
+  container: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+
+  // inner rounded chat surface
+  chatSurface: {
+    flex: 1,
+    marginHorizontal: 12,
+    marginVertical: 18,
+    borderRadius: 32,
+    paddingTop: 16,
+    paddingBottom: 10,
+    overflow: "hidden",
+  },
+
+  topBar: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  topName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#f9fafb",
+  },
+  topStatus: {
+    fontSize: 12,
+    color: "#e5e7eb",
+  },
+  topStatusOnline: {
+    color: "#bbf7d0",
+  },
+  typingText: {
+    fontSize: 12,
+    color: "#e5e7eb",
+    marginTop: 4,
+  },
+
+  listContent: {
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+
+  messageRow: {
+    width: "100%",
+    marginVertical: 4,
+  },
+  messageRowMe: {
+    alignItems: "flex-end",
+  },
+  messageRowThem: {
+    alignItems: "flex-start",
+  },
+
+  messageBubble: {
+    maxWidth: "78%",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  // other user's bubble
+  theirMessage: {
+    backgroundColor: "transparent",
+    color: "#ffffff",
+    borderBottomLeftRadius: 4,
+  },
+  theirMessageText: {
+  color: "#4b0082", // deep purple text that fits the gradient
+  fontWeight: "500",
+},
+  // my bubble
+  myMessage: {
+    backgroundColor: "#ffffff",
+    borderBottomRightRadius: 4,
+  },
+
+  messageText: {
+    fontSize: 14,
+    color: "#7A4B00",
+  },
+  myMessageText: {
+    color: "#4c3bcf",
+  },
+
+  metaText: {
+    marginTop: 4,
+    fontSize: 11,
+    color: "#9ca3af",
+    textAlign: "right",
+  },
+  metaTextRead: {
+    color: "#38bdf8", // blue double ticks
+  },
+
+metaRow: {
+  marginTop: 4,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "flex-end",
+},
+metaRowThem: {
+  marginTop: 4,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "flex-start",
+},
+
+timeTextMe: {
+  fontSize: 10,
+  color: "#6b7280",
+  marginRight: 6,
+},
+timeTextThem: {
+  fontSize: 10,
+  color: "#111827",
+},
+
+// you can keep metaText / metaTextRead as-is
+metaText: {
+  marginTop: 0,
+  fontSize: 11,
+  color: "#9ca3af",
+  textAlign: "right",
+},
+metaTextRead: {
+  color: "#38bdf8", // blue double ticks
+},
+
+// typing indicator styles (bottom-of-chat)
+typingRow: {
+  paddingHorizontal: 12,
+  paddingTop: 4,
+  paddingBottom: 8,
+  alignItems: "flex-start",
+},
+typingBubble: {
+  backgroundColor: "rgba(255,255,255,0.9)",
+  borderRadius: 16,
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  fontSize: 13,
+  fontWeight: "700",
+  color: "#000", // bold black text like you asked
+},
+
+
+  inputArea: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+  composer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  micIcon: {
+    fontSize: 18,
+    marginRight: 8,
+    color: "#6b21a8",
+  },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    color: "#111827",
+    paddingVertical: 4,
+    borderWidth: 0,
+    outlineStyle: "none",
+  },
+  sendButton: {
+    marginLeft: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendIcon: {
+    fontSize: 18,
+    color: "#6b21a8",
+  },
 });

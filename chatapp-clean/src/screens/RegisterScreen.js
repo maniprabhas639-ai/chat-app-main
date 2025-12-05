@@ -38,48 +38,115 @@ export default function RegisterScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Register</Text>
+      <View style={styles.card}>
+        <Text style={styles.title}>Register</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Username" // ✅ updated label
-        autoCapitalize="none"
-        value={username}
-        onChangeText={setUsername}
-      />
+        <TextInput
+          style={styles.input}
+          placeholder="Username" // ✅ updated label
+          placeholderTextColor="#6b7280"
+          autoCapitalize="none"
+          value={username}
+          onChangeText={setUsername}
+        />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#6b7280"
+          autoCapitalize="none"
+          keyboardType="email-address"
+          value={email}
+          onChangeText={setEmail}
+        />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor="#6b7280"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
 
-      <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? "Registering..." : "Register"}</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
+          <Text style={styles.buttonText}>{loading ? "Registering..." : "Register"}</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate(ROUTES.LOGIN)}>
-        <Text style={styles.link}>Already have an account? Login</Text>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.navigate(ROUTES.LOGIN)}>
+          <Text style={styles.link}>
+            Already have an account? <Text style={styles.linkHighlight}>Login</Text>
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 20 },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
-  input: { borderWidth: 1, borderColor: "#ccc", padding: 10, marginBottom: 15, borderRadius: 8 },
-  button: { backgroundColor: "#007AFF", padding: 15, borderRadius: 8, alignItems: "center" },
-  buttonText: { color: "#fff", fontWeight: "bold" },
-  link: { marginTop: 15, color: "#007AFF", textAlign: "center" },
+  // same background + centering as Login
+  container: {
+    flex: 1,
+    backgroundColor: "#020617",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+
+  card: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#020819",
+    borderRadius: 18,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#111827",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+
+  title: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#e5e7eb",
+    marginBottom: 24,
+  },
+
+  input: {
+    backgroundColor: "#020617",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+    fontSize: 14,
+    color: "#e5e7eb",
+  },
+
+  button: {
+    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    backgroundColor: "#ec4899", // matches Login "Sign in" solid pink
+  },
+
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#f9fafb",
+  },
+
+  link: {
+    marginTop: 18,
+    fontSize: 13,
+    color: "#e5e7eb",
+    textAlign: "left",
+  },
+
+  linkHighlight: {
+    textDecorationLine: "underline",
+  },
 });

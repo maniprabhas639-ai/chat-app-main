@@ -9,6 +9,17 @@ try {
   Message = null;
   console.warn("⚠️ Message model not found, skipping DB lookups.");
 }
+//mailer
+const { sendMail } = require("./utils/mailer");
+let Notification;
+try {
+  Notification = require("./models/Notification");
+} catch {
+  Notification = null;
+  console.warn("⚠️ Notification model not found, email notifications disabled.");
+}
+
+
 
 /**
  * Helper: parse origins from env var (comma separated)
@@ -64,6 +75,65 @@ module.exports = (server, app) => {
   const HEARTBEAT_TIMEOUT = parseInt(process.env.HEARTBEAT_TIMEOUT_MS || "30000", 10);
   const HEARTBEAT_INTERVAL = parseInt(process.env.HEARTBEAT_CHECK_INTERVAL_MS || "10000", 10);
 
+  async function queueOfflineNotification(receiverId, senderId) {
+    if (!Notification) return;
+    try {
+      await Notification.create({
+        user: receiverId,
+        from: senderId,
+        type: "new_message",
+      });
+    } catch (e) {
+      console.warn("⚠️ Failed to create Notification:", e?.message || e);
+    }
+  }
+
+  async function notifyUserOfOfflineMessages(userId) {
+    if (!Notification) return;
+
+    try {
+      const pending = await Notification.find({
+        user: userId,
+        processed: false,
+        type: "new_message",
+      }).populate("from", "username email");
+
+      if (!pending.length) return;
+
+      const userDoc = await User.findById(userId).select("email username");
+      if (!userDoc || !userDoc.email) return;
+
+      const senderNames = [
+        ...new Set(
+          pending.map((n) => n.from?.username || n.from?.email || "Someone")
+        ),
+      ];
+
+      const subject = "You have new messages";
+      const text =
+        senderNames.length === 1
+          ? `You have new messages from ${senderNames[0]}. Open the app to read them.`
+          : `You have new messages from: ${senderNames.join(
+              ", "
+            )}. Open the app to read them.`;
+
+      await sendMail({ to: userDoc.email, subject, text });
+
+      await Notification.updateMany(
+        { _id: { $in: pending.map((p) => p._id) } },
+        { $set: { processed: true } }
+      );
+    } catch (e) {
+      console.warn(
+        "⚠️ Failed to process offline message notifications:",
+        e?.message || e
+      );
+    }
+  }
+
+
+
+
   async function addSocketForUser(userId, socket) {
     const set = onlineUsers.get(userId) || new Set();
     set.add(socket.id);
@@ -80,6 +150,9 @@ module.exports = (server, app) => {
     } catch (e) {
       console.warn("⚠️ Failed to set user online:", e?.message || e);
     }
+    
+      // 🔔 send any pending email notifications (non-blocking)
+    notifyUserOfOfflineMessages(userId).catch(() => {});
 
     io.emit("userStatus", { userId, online: true });
   }
@@ -219,6 +292,13 @@ module.exports = (server, app) => {
           } catch (e) {}
           io.to(`user_${receiver}`).emit("receiveMessage", saved);
           io.to(`user_${sender}`).emit("receiveMessage", saved);
+
+          const isReceiverOnline = onlineUsers.has(String(receiver));
+if (!isReceiverOnline) {
+  queueOfflineNotification(receiver, sender).catch(() => {});
+}
+
+
         } catch (e) {
           console.warn("⚠️ Failed to save message in socket:", e.message);
           const raw = { sender, receiver, content, createdAt: Date.now() };
@@ -236,9 +316,40 @@ module.exports = (server, app) => {
       if (messageId && to) io.to(`user_${to}`).emit("messageDelivered", { messageId });
     });
 
-    socket.on("messageSeen", ({ messageId, to }) => {
-      if (messageId && to) io.to(`user_${to}`).emit("messageSeen", { messageId });
-    });
+   //replaced
+socket.on("messageSeen", async ({ messageId, to }) => {
+  if (!messageId) return;
+
+  // 1) Notify the other user in real-time (same as before)
+  if (to) {
+    io.to(`user_${to}`).emit("messageSeen", { messageId });
+  }
+
+  // 2) Persist "seen" in the database so future /messages calls know it
+  if (Message) {
+    try {
+      await Message.findByIdAndUpdate(
+        messageId,
+        {
+          $set: {
+            read: true,
+            seen: true,
+            seenAt: new Date(),
+          },
+        },
+        { new: true }
+      );
+    } catch (e) {
+      console.warn(
+        "⚠️ Failed to persist messageSeen in DB:",
+        e?.message || e
+      );
+    }
+  }
+});
+
+
+
 
     socket.on("logout", async () => {
       if (socket.userId) await removeSocketForUser(socket.userId, socket.id);
