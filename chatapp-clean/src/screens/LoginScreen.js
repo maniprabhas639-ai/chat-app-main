@@ -1,6 +1,6 @@
 // src/screens/LoginScreen.js
 import React, { useState, useContext } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,Platform } from "react-native";
 import { AuthContext } from "../context/AuthContext";
 import api from "../api/axiosInstance";
 import { ROUTES } from "../navigation/routes";
@@ -12,27 +12,37 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      return Alert.alert("Validation", "Please enter email and password");
-    }
+const handleLogin = async () => {
+  if (!email || !password) {
+    return Alert.alert("Validation", "Please enter email and password");
+  }
 
-    try {
-      setLoading(true);
-      const res = await api.post("/auth/login", { email, password });
+  try {
+    setLoading(true);
+    const res = await api.post("/auth/login", { email, password });
 
-      if (res.data?.user && res.data?.token) {
-        await login(res.data.user, res.data.token);
-      } else {
-        Alert.alert("Error", "Invalid response from server");
-      }
-    } catch (error) {
-      console.error("Login error:", error.response?.data || error.message);
-      Alert.alert("Error", error.response?.data?.message || "Login failed");
-    } finally {
-      setLoading(false);
+    if (res.data?.user && res.data?.token) {
+      await login(res.data.user, res.data.token);
+    } else {
+      Alert.alert("Error", "Invalid response from server");
     }
-  };
+  } catch (error) {
+    console.error("Login error:", error.response?.data || error.message);
+
+    const message =
+      error?.response?.data?.message || "Invalid email or password";
+
+    if (Platform.OS === "web") {
+      window.alert(message);
+    } else {
+      Alert.alert("Login failed", message);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
+
+
 
   return (
     <View style={styles.container}>

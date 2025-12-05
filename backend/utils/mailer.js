@@ -14,6 +14,15 @@ function getTransporter() {
     SMTP_FROM,
   } = process.env;
 
+console.log("📧 Mailer env:", {
+    SMTP_HOST,
+    SMTP_PORT,
+    SMTP_USER,
+    hasPass: !!SMTP_PASS,
+    SMTP_FROM,
+  });
+
+
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
     console.warn(
       "⚠️ Mailer not configured (missing SMTP_* env vars). Email notifications will be skipped."

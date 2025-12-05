@@ -75,7 +75,7 @@ module.exports = (server, app) => {
   const HEARTBEAT_TIMEOUT = parseInt(process.env.HEARTBEAT_TIMEOUT_MS || "30000", 10);
   const HEARTBEAT_INTERVAL = parseInt(process.env.HEARTBEAT_CHECK_INTERVAL_MS || "10000", 10);
 
-  async function queueOfflineNotification(receiverId, senderId) {
+  /*async function queueOfflineNotification(receiverId, senderId) {
     if (!Notification) return;
     try {
       await Notification.create({
@@ -87,8 +87,33 @@ module.exports = (server, app) => {
       console.warn("⚠️ Failed to create Notification:", e?.message || e);
     }
   }
+*/
 
-  async function notifyUserOfOfflineMessages(userId) {
+async function queueOfflineNotification(receiverId, senderId) {
+  if (!Notification) {
+    console.warn("⚠️ Notification model missing, cannot queue offline notification");
+    return;
+  }
+
+  console.log("📨 queueOfflineNotification called", { receiverId, senderId });
+
+  try {
+    await Notification.create({
+      user: receiverId,
+      from: senderId,
+      type: "new_message",
+    });
+    console.log("✅ Notification document created for offline user", receiverId);
+  } catch (e) {
+    console.warn("⚠️ Failed to create Notification:", e?.message || e);
+  }
+}
+
+
+
+
+
+ /* async function notifyUserOfOfflineMessages(userId) {
     if (!Notification) return;
 
     try {
@@ -130,6 +155,61 @@ module.exports = (server, app) => {
       );
     }
   }
+*/
+
+async function notifyUserOfOfflineMessages(userId) {
+  if (!Notification) {
+    console.warn("⚠️ Notification model missing, cannot notify offline messages");
+    return;
+  }
+
+  try {
+    console.log("🔔 Checking offline notifications for user", userId);
+
+    const pending = await Notification.find({
+      user: userId,
+      processed: false,
+      type: "new_message",
+    }).populate("from", "username email");
+
+    console.log("🔔 Pending notifications count:", pending.length);
+
+    if (!pending.length) return;
+
+    const userDoc = await User.findById(userId).select("email username");
+    console.log("🔔 Loaded user for notifications:", userDoc?.email);
+
+    if (!userDoc || !userDoc.email) return;
+
+    const senderNames = [
+      ...new Set(
+        pending.map((n) => n.from?.username || n.from?.email || "Someone")
+      ),
+    ];
+
+    const subject = "You have new messages";
+    const text =
+      senderNames.length === 1
+        ? `You have new messages from ${senderNames[0]}. Open the app to read them.`
+        : `You have new messages from: ${senderNames.join(
+            ", "
+          )}. Open the app to read them.`;
+
+    await sendMail({ to: userDoc.email, subject, text });
+
+    await Notification.updateMany(
+      { _id: { $in: pending.map((p) => p._id) } },
+      { $set: { processed: true } }
+    );
+
+    console.log("🔔 Notifications marked processed for user", userId);
+  } catch (e) {
+    console.warn(
+      "⚠️ Failed to process offline message notifications:",
+      e?.message || e
+    );
+  }
+}
 
 
 
