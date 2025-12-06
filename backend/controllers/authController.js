@@ -1,7 +1,10 @@
-// backend/controllers/authController.js 
+// backend/controllers/authController.js
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+
+// 🔔 Re-use your existing mail helper (adjust path/name if needed)
+const sendEmail = require("../utils/sendEmail");
 
 // Helper: remove password before sending user
 const sanitizeUser = (user) => {
@@ -37,7 +40,6 @@ const registerUser = async (req, res) => {
 };
 
 // Login
-// Login
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -55,7 +57,7 @@ const loginUser = async (req, res) => {
     }
 
     // Compare passwords safely
-    const isMatch = await bcrypt.compare(password, user.password).catch(() => false);
+    const isMatch = await bcrypt.compare(user.password ? password : "", user.password).catch(() => false);
 
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
@@ -69,15 +71,61 @@ const loginUser = async (req, res) => {
       token,
       user: sanitizeUser(user),
     });
-
   } catch (error) {
     console.error("Login error:", error.message);
     return res.status(500).json({ message: "Server error" });
   }
 };
 
+// 🔥 NEW: Forgot Password (simple, admin-driven reset)
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
 
-// 🔥 NEW: Get current logged-in user
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email });
+
+    // Do not reveal whether user exists explicitly
+    if (!user) {
+      return res.status(200).json({
+        message:
+          "If an account exists for this email, you will receive password reset instructions shortly.",
+      });
+    }
+
+    // ADMIN email where reset requests should go
+    const adminEmail = process.env.RESET_REQUEST_EMAIL || process.env.ADMIN_EMAIL;
+
+    // Email to admin so YOU can reset manually
+    if (adminEmail) {
+      await sendEmail(
+        adminEmail,
+        "Password reset requested",
+        `User with email ${email} requested a password reset at ${new Date().toISOString()}`
+      );
+    }
+
+    // Optional: confirmation to user
+    await sendEmail(
+      email,
+      "Password reset request received",
+      "We have received your password reset request. Our team will contact you with next steps."
+    );
+
+    return res.status(200).json({
+      message:
+        "If an account exists for this email, you will receive password reset instructions shortly.",
+    });
+  } catch (error) {
+    console.error("ForgotPassword error:", error.message);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// 🔥 Get current logged-in user
 const getMe = async (req, res) => {
   try {
     const userId = req.user?.id || req.userId;
@@ -98,4 +146,4 @@ const getMe = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getMe };
+module.exports = { registerUser, loginUser, forgotPassword, getMe };

@@ -1,6 +1,13 @@
 // src/screens/RegisterScreen.js
 import React, { useState, useContext } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+} from "react-native";
 import { AuthContext } from "../context/AuthContext";
 import api from "../api/axiosInstance";
 import { ROUTES } from "../navigation/routes";
@@ -8,7 +15,7 @@ import { ROUTES } from "../navigation/routes";
 export default function RegisterScreen({ navigation }) {
   const { register } = useContext(AuthContext);
 
-  const [username, setUsername] = useState(""); // ✅ changed from "name"
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,8 +27,11 @@ export default function RegisterScreen({ navigation }) {
 
     try {
       setLoading(true);
-      // ✅ send "username" instead of "name"
-      const res = await api.post("/auth/register", { username, email, password });
+      const res = await api.post("/auth/register", {
+        username,
+        email,
+        password,
+      });
 
       if (res.data?.user && res.data?.token) {
         await register(res.data.user, res.data.token);
@@ -30,7 +40,13 @@ export default function RegisterScreen({ navigation }) {
       }
     } catch (error) {
       console.error("Register error:", error.response?.data || error.message);
-      Alert.alert("Error", error.response?.data?.message || "Registration failed");
+      const message =
+        error?.response?.data?.message ||
+        error?.userFriendlyMessage ||
+        "Registration failed";
+
+      // Ex: "User already exists" from backend will show correctly here
+      Alert.alert("Error", message);
     } finally {
       setLoading(false);
     }
@@ -43,7 +59,7 @@ export default function RegisterScreen({ navigation }) {
 
         <TextInput
           style={styles.input}
-          placeholder="Username" // ✅ updated label
+          placeholder="Username"
           placeholderTextColor="#6b7280"
           autoCapitalize="none"
           value={username}
@@ -69,13 +85,20 @@ export default function RegisterScreen({ navigation }) {
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
-          <Text style={styles.buttonText}>{loading ? "Registering..." : "Register"}</Text>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleRegister}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>
+            {loading ? "Registering..." : "Register"}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate(ROUTES.LOGIN)}>
           <Text style={styles.link}>
-            Already have an account? <Text style={styles.linkHighlight}>Login</Text>
+            Already have an account?{" "}
+            <Text style={styles.linkHighlight}>Login</Text>
           </Text>
         </TouchableOpacity>
       </View>
@@ -84,7 +107,6 @@ export default function RegisterScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // same background + centering as Login
   container: {
     flex: 1,
     backgroundColor: "#020617",
@@ -130,7 +152,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: "center",
-    backgroundColor: "#ec4899", // matches Login "Sign in" solid pink
+    backgroundColor: "#ec4899",
   },
 
   buttonText: {

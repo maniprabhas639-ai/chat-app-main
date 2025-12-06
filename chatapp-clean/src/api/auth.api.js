@@ -1,8 +1,9 @@
 // src/api/auth.api.js
 import api from "./axiosInstance";
 
-export const register = async (name, email, password) => {
-  const res = await api.post("/auth/register", { name, email, password });
+// Use "username" to match backend (registerUser)
+export const register = async (username, email, password) => {
+  const res = await api.post("/auth/register", { username, email, password });
   return res.data;
 };
 
