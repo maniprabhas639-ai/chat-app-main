@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Platform,      // 👈 added
 } from "react-native";
 import { AuthContext } from "../context/AuthContext";
 import api from "../api/axiosInstance";
@@ -22,7 +23,13 @@ export default function RegisterScreen({ navigation }) {
 
   const handleRegister = async () => {
     if (!username || !email || !password) {
-      return Alert.alert("Validation", "Please fill all fields");
+      const msg = "Please fill all fields";
+      if (Platform.OS === "web") {
+        window.alert(msg);
+      } else {
+        Alert.alert("Validation", msg);
+      }
+      return;
     }
 
     try {
@@ -36,17 +43,46 @@ export default function RegisterScreen({ navigation }) {
       if (res.data?.user && res.data?.token) {
         await register(res.data.user, res.data.token);
       } else {
-        Alert.alert("Error", "Invalid response from server");
+        const msg = "Invalid response from server";
+        if (Platform.OS === "web") {
+          window.alert(msg);
+        } else {
+          Alert.alert("Error", msg);
+        }
       }
     } catch (error) {
-      console.error("Register error:", error.response?.data || error.message);
-      const message =
-        error?.response?.data?.message ||
-        error?.userFriendlyMessage ||
-        "Registration failed";
+      console.error("Register error (full):", {
+        data: error?.response?.data,
+        status: error?.response?.status,
+        message: error?.message,
+      });
 
-      // Ex: "User already exists" from backend will show correctly here
-      Alert.alert("Error", message);
+      let message =
+        error?.response?.data?.message || error?.userFriendlyMessage;
+
+      if (!message && error?.response?.data) {
+        const data = error.response.data;
+        if (typeof data === "string") {
+          message = data;
+        } else {
+          try {
+            message = JSON.stringify(data);
+          } catch {
+            message = "Registration failed";
+          }
+        }
+      }
+
+      if (!message) {
+        message = "Registration failed";
+      }
+
+      // 👇 same behavior as LoginScreen: window.alert on web
+      if (Platform.OS === "web") {
+        window.alert(message);
+      } else {
+        Alert.alert("Error", message);
+      }
     } finally {
       setLoading(false);
     }

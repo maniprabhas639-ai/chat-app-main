@@ -4,13 +4,12 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 // ✅ Local sendEmail stub so app doesn't crash if utils/sendEmail.js is missing.
-//    Later you can replace this with your real mail util.
 const sendEmail = async (to, subject, text) => {
   try {
     console.log("📧 sendEmail called:", { to, subject, text });
-    // TODO: replace this with:
+    // When you add real emailing:
     // const sendEmail = require("../utils/sendEmail");
-    // and remove this stub when you have the real file.
+    // and remove this stub.
   } catch (err) {
     console.error("sendEmail error:", err.message);
   }
@@ -24,32 +23,58 @@ const sanitizeUser = (user) => {
   return obj;
 };
 
-// Register
+/* =========================
+   REGISTER
+   ========================= */
 const registerUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    let user = await User.findOne({ email });
-    if (user) return res.status(400).json({ message: "User already exists" });
+    console.log("📝 Register body:", req.body);
+
+    if (!username || !email || !password) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    // Check by email
+    const existingByEmail = await User.findOne({ email });
+    // Check by username too (if unique)
+    const existingByUsername = await User.findOne({ username });
+
+    if (existingByEmail || existingByUsername) {
+      console.log("⚠️ Register blocked: user already exists");
+      return res.status(400).json({ message: "User already exists" });
+    }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    user = new User({ username, email, password: hashedPassword });
+    const user = new User({ username, email, password: hashedPassword });
     await user.save();
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "1d",
     });
 
-    res.status(201).json({ token, user: sanitizeUser(user) });
+    console.log("✅ Register success for", email);
+
+    return res.status(201).json({ token, user: sanitizeUser(user) });
   } catch (error) {
-    console.error("Register error:", error.message);
-    res.status(500).json({ message: "Server error" });
+    console.error("Register error (raw):", error);
+
+    // Mongo duplicate key error (unique index on email / username)
+    if (error && error.code === 11000) {
+      console.error("⚠️ Duplicate key error:", error.keyValue);
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
-// Login
+/* =========================
+   LOGIN
+   ========================= */
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -58,15 +83,12 @@ const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    // Get user AND password
     const user = await User.findOne({ email }).select("+password");
 
-    // If user not found OR no password -> invalid
     if (!user || !user.password) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    // Compare passwords safely
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
@@ -87,7 +109,9 @@ const loginUser = async (req, res) => {
   }
 };
 
-// 🔥 Forgot Password (simple, admin-driven reset)
+/* =========================
+   FORGOT PASSWORD
+   ========================= */
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -98,7 +122,6 @@ const forgotPassword = async (req, res) => {
 
     const user = await User.findOne({ email });
 
-    // Do not reveal whether user exists explicitly
     if (!user) {
       return res.status(200).json({
         message:
@@ -109,7 +132,6 @@ const forgotPassword = async (req, res) => {
     const adminEmail =
       process.env.RESET_REQUEST_EMAIL || process.env.ADMIN_EMAIL;
 
-    // Email to admin so YOU can reset manually
     if (adminEmail) {
       await sendEmail(
         adminEmail,
@@ -118,7 +140,6 @@ const forgotPassword = async (req, res) => {
       );
     }
 
-    // Optional: confirmation to user
     await sendEmail(
       email,
       "Password reset request received",
@@ -135,7 +156,9 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-// 🔥 Get current logged-in user
+/* =========================
+   GET CURRENT USER
+   ========================= */
 const getMe = async (req, res) => {
   try {
     const userId = req.user?.id || req.userId;
