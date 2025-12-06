@@ -3,8 +3,18 @@ const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
-// 🔔 Re-use your existing mail helper (adjust path/name if needed)
-const sendEmail = require("../utils/sendEmail");
+// ✅ Local sendEmail stub so app doesn't crash if utils/sendEmail.js is missing.
+//    Later you can replace this with your real mail util.
+const sendEmail = async (to, subject, text) => {
+  try {
+    console.log("📧 sendEmail called:", { to, subject, text });
+    // TODO: replace this with:
+    // const sendEmail = require("../utils/sendEmail");
+    // and remove this stub when you have the real file.
+  } catch (err) {
+    console.error("sendEmail error:", err.message);
+  }
+};
 
 // Helper: remove password before sending user
 const sanitizeUser = (user) => {
@@ -57,7 +67,7 @@ const loginUser = async (req, res) => {
     }
 
     // Compare passwords safely
-    const isMatch = await bcrypt.compare(user.password ? password : "", user.password).catch(() => false);
+    const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
@@ -77,7 +87,7 @@ const loginUser = async (req, res) => {
   }
 };
 
-// 🔥 NEW: Forgot Password (simple, admin-driven reset)
+// 🔥 Forgot Password (simple, admin-driven reset)
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -96,8 +106,8 @@ const forgotPassword = async (req, res) => {
       });
     }
 
-    // ADMIN email where reset requests should go
-    const adminEmail = process.env.RESET_REQUEST_EMAIL || process.env.ADMIN_EMAIL;
+    const adminEmail =
+      process.env.RESET_REQUEST_EMAIL || process.env.ADMIN_EMAIL;
 
     // Email to admin so YOU can reset manually
     if (adminEmail) {
@@ -146,4 +156,9 @@ const getMe = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, forgotPassword, getMe };
+module.exports = {
+  registerUser,
+  loginUser,
+  forgotPassword,
+  getMe,
+};
