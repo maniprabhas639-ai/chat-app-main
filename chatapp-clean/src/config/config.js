@@ -3,21 +3,26 @@ import Constants from "expo-constants";
 
 /**
  * Priority for API URL:
- * 1. process.env.EXPO_PUBLIC_API_URL (set in Vercel)
- * 2. process.env.REACT_APP_API_URL (if present)
- * 3. expo config extra.apiUrl (useful for EAS / app.config.js)
- * 4. local fallback (your dev IP)
+ * 1. process.env.EXPO_PUBLIC_API_URL  (Vercel / web build / dev)
+ * 2. process.env.REACT_APP_API_URL   (CRA style)
+ * 3. expo config extra.apiUrl        (app.config.js / eas.json)
+ * 4. fallback: your Render backend
  */
-const expoExtra = (Constants && (Constants.expoConfig || Constants.manifest) && (Constants.expoConfig || Constants.manifest).extra) || {};
+const expoExtra =
+  (Constants &&
+    (Constants.expoConfig || Constants.manifest) &&
+    (Constants.expoConfig || Constants.manifest).extra) ||
+  {};
 
 const RAW_API =
-  (typeof process !== "undefined" && (process.env.EXPO_PUBLIC_API_URL || process.env.REACT_APP_API_URL)) ||
+  (typeof process !== "undefined" &&
+    (process.env.EXPO_PUBLIC_API_URL || process.env.REACT_APP_API_URL)) ||
   expoExtra.apiUrl ||
-  "http://192.168.43.176:5000";
+  "https://chat-app-backend-sgu2.onrender.com"; // 👈 fallback = Render backend
 
-export const API_URL = "https://chat-app-backend-sgu2.onrender.com"; ; // e.g. https://chat-app-backend-sgu2.onrender.com or local IP
+export const API_URL = RAW_API;
 
-// Normalize to always return something like ".../api"
+// Normalize to always end with /api for axios
 export const buildBaseURL = (raw) => {
   const fallback = "https://chat-app-backend-sgu2.onrender.com/api";
   if (!raw || typeof raw !== "string") return fallback;
@@ -30,7 +35,7 @@ export const buildBaseURL = (raw) => {
   return trimmed + "/api";
 };
 
-// For axios base
+// For axios instance
 export const API_BASE_URL = buildBaseURL(API_URL);
 
 // For socket.io (strip /api if present)
