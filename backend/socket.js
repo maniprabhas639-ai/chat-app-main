@@ -195,7 +195,11 @@ async function notifyUserOfOfflineMessages(userId) {
             ", "
           )}. Open the app to read them.`;
 
+    console.log("🔔 About to send email notification to", userDoc.email, "with subject:", subject);
+
     await sendMail({ to: userDoc.email, subject, text });
+
+    console.log("🔔 Email sendMail() finished, marking notifications processed for user", userId);
 
     await Notification.updateMany(
       { _id: { $in: pending.map((p) => p._id) } },
@@ -210,6 +214,7 @@ async function notifyUserOfOfflineMessages(userId) {
     );
   }
 }
+
 
 
 
