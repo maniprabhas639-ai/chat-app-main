@@ -1,72 +1,64 @@
 // backend/utils/mailer.js
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-let transporter = null;
+let resendClient = null;
 
-function getTransporter() {
-  if (transporter) return transporter;
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
 
-  const {
-    SMTP_HOST,
-    SMTP_PORT,
-    SMTP_USER,
-    SMTP_PASS,
-    SMTP_FROM,
-  } = process.env;
-
-  console.log("📧 Mailer env:", {
-    SMTP_HOST,
-    SMTP_PORT,
-    SMTP_USER,
-    hasPass: !!SMTP_PASS,
-    SMTP_FROM,
+  // Log env presence (not values)
+  console.log("📧 [Resend] Mailer env:", {
+    hasApiKey: !!apiKey,
+    from,
   });
 
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+  if (!apiKey || !from) {
     console.warn(
-      "⚠️ Mailer not configured (missing SMTP_* env vars). Email notifications will be skipped."
+      "⚠️ [Resend] Missing RESEND_API_KEY or EMAIL_FROM. Email notifications will be skipped."
     );
     return null;
   }
 
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: Number(SMTP_PORT) === 465, // true for 465, false for others
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-  });
+  if (!resendClient) {
+    resendClient = new Resend(apiKey);
+  }
 
-  // Optional but helpful: verify connection once
-  transporter.verify((err, success) => {
-    if (err) {
-      console.warn("⚠️ SMTP transporter verification failed:", err.message);
-    } else {
-      console.log("✅ SMTP transporter is ready to send mail");
-    }
-  });
-
-  return transporter;
+  return resendClient;
 }
 
+/**
+ * Unified email function used by the rest of the app.
+ * Callers: notifyUserOfOfflineMessages in socket.js
+ */
 async function sendMail({ to, subject, text }) {
   console.log("📧 sendMail called with:", { to, subject });
 
-  const t = getTransporter();
-  if (!t) {
-    console.warn("⚠️ sendMail aborted: transporter not available");
+  const from = process.env.EMAIL_FROM;
+  const client = getResendClient();
+
+  if (!client || !from) {
+    console.warn("⚠️ [Resend] sendMail aborted: client or FROM not configured");
     return;
   }
 
-  const from = process.env.SMTP_FROM;
-
   try {
-    const info = await t.sendMail({ from, to, subject, text });
-    console.log("📧 Notification email sent to", to, "messageId:", info.messageId);
+    const result = await client.emails.send({
+      from,
+      to,       // string or array is fine
+      subject,
+      text,
+    });
+
+    console.log(
+      "✅ [Resend] Notification email sent",
+      { to, id: result?.id || null }
+    );
   } catch (err) {
-    console.warn("⚠️ Failed to send email:", err.message);
+    console.warn(
+      "⚠️ [Resend] Failed to send email:",
+      err?.message || err
+    );
   }
 }
 
