@@ -7,7 +7,6 @@ function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
 
-  // Log env presence (not values)
   console.log("📧 [Resend] Mailer env:", {
     hasApiKey: !!apiKey,
     from,
@@ -29,7 +28,6 @@ function getResendClient() {
 
 /**
  * Unified email function used by the rest of the app.
- * Callers: notifyUserOfOfflineMessages in socket.js
  */
 async function sendMail({ to, subject, text }) {
   console.log("📧 sendMail called with:", { to, subject });
@@ -43,20 +41,28 @@ async function sendMail({ to, subject, text }) {
   }
 
   try {
-    const result = await client.emails.send({
+    const { data, error } = await client.emails.send({
       from,
       to,
       subject,
       text,
     });
 
-    console.log(
-      "✅ [Resend] Notification email sent",
-      { to, id: result?.id || null }
-    );
+    if (error) {
+      console.warn(
+        "⚠️ [Resend] Failed to send email via API:",
+        error.message || JSON.stringify(error)
+      );
+      return;
+    }
+
+    console.log("✅ [Resend] Notification email accepted by Resend", {
+      to,
+      id: data?.id || null,
+    });
   } catch (err) {
     console.warn(
-      "⚠️ [Resend] Failed to send email:",
+      "⚠️ [Resend] Exception while sending email:",
       err?.message || err
     );
   }
