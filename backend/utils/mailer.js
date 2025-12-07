@@ -45,7 +45,7 @@ async function sendMail({ to, subject, text }) {
   try {
     const result = await client.emails.send({
       from,
-      to,       // string or array is fine
+      to,
       subject,
       text,
     });
