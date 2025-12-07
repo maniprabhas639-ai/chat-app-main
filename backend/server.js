@@ -137,7 +137,7 @@ process.on("uncaughtException", (err) => {
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("🔹 SIGTERM received. Closing server...");
-  server.clcose(() => process.exit(0));
+  server.close(() => process.exit(0));
 });
 
 process.on("SIGINT", () => {
