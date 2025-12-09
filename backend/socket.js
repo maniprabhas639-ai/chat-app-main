@@ -387,10 +387,16 @@ async function addSocketForUser(userId, socket) {
           io.to(`user_${receiver}`).emit("receiveMessage", saved);
           io.to(`user_${sender}`).emit("receiveMessage", saved);
 
-          const isReceiverOnline = onlineUsers.has(String(receiver));
+        const isReceiverOnline = onlineUsers.has(String(receiver));
+
 if (!isReceiverOnline) {
-  queueOfflineNotification(receiver, sender).catch(() => {});
+  // 1) Store the message notification in DB
+  await queueOfflineNotification(receiver, sender);
+
+  // 2) NEW: Immediately send the email now
+  notifyUserOfOfflineMessages(receiver).catch(() => {});
 }
+  
 
 
         } catch (e) {
