@@ -387,18 +387,24 @@ async function addSocketForUser(userId, socket) {
           io.to(`user_${receiver}`).emit("receiveMessage", saved);
           io.to(`user_${sender}`).emit("receiveMessage", saved);
 
-        const isReceiverOnline = onlineUsers.has(String(receiver));
+       const isReceiverOnline = onlineUsers.has(String(receiver));
 
 if (!isReceiverOnline) {
   // 1) Store the message notification in DB
   await queueOfflineNotification(receiver, sender);
 
-  // 2) NEW: Immediately send the email now
-  notifyUserOfOfflineMessages(receiver).catch(() => {});
+  // 2) Check how many unprocessed notifications exist
+  const pending = await Notification.countDocuments({
+    user: receiver,
+    processed: false,
+    type: "new_message",
+  });
+
+  // 3) If this is the FIRST pending notification, send one email
+  if (pending === 1) {
+    notifyUserOfOfflineMessages(receiver).catch(() => {});
+  }
 }
-  
-
-
         } catch (e) {
           console.warn("⚠️ Failed to save message in socket:", e.message);
           const raw = { sender, receiver, content, createdAt: Date.now() };
