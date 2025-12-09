@@ -19,8 +19,6 @@ try {
   console.warn("⚠️ Notification model not found, email notifications disabled.");
 }
 
-
-
 /**
  * Helper: parse origins from env var (comma separated)
  * Priority:
@@ -71,11 +69,13 @@ module.exports = (server, app) => {
 
   const onlineUsers = new Map(); // userId => Set(socketId)
   const lastActivity = new Map(); // userId => timestamp
+  const offlineEmailSent = new Map(); // userId => boolean (has email been sent in this offline session?)
 
   const HEARTBEAT_TIMEOUT = parseInt(process.env.HEARTBEAT_TIMEOUT_MS || "30000", 10);
   const HEARTBEAT_INTERVAL = parseInt(process.env.HEARTBEAT_CHECK_INTERVAL_MS || "10000", 10);
 
-  /*async function queueOfflineNotification(receiverId, senderId) {
+  /*
+  async function queueOfflineNotification(receiverId, senderId) {
     if (!Notification) return;
     try {
       await Notification.create({
@@ -87,33 +87,30 @@ module.exports = (server, app) => {
       console.warn("⚠️ Failed to create Notification:", e?.message || e);
     }
   }
-*/
+  */
 
-async function queueOfflineNotification(receiverId, senderId) {
-  if (!Notification) {
-    console.warn("⚠️ Notification model missing, cannot queue offline notification");
-    return;
+  async function queueOfflineNotification(receiverId, senderId) {
+    if (!Notification) {
+      console.warn("⚠️ Notification model missing, cannot queue offline notification");
+      return;
+    }
+
+    console.log("📨 queueOfflineNotification called", { receiverId, senderId });
+
+    try {
+      await Notification.create({
+        user: receiverId,
+        from: senderId,
+        type: "new_message",
+      });
+      console.log("✅ Notification document created for offline user", receiverId);
+    } catch (e) {
+      console.warn("⚠️ Failed to create Notification:", e?.message || e);
+    }
   }
 
-  console.log("📨 queueOfflineNotification called", { receiverId, senderId });
-
-  try {
-    await Notification.create({
-      user: receiverId,
-      from: senderId,
-      type: "new_message",
-    });
-    console.log("✅ Notification document created for offline user", receiverId);
-  } catch (e) {
-    console.warn("⚠️ Failed to create Notification:", e?.message || e);
-  }
-}
-
-
-
-
-
- /* async function notifyUserOfOfflineMessages(userId) {
+  /*
+  async function notifyUserOfOfflineMessages(userId) {
     if (!Notification) return;
 
     try {
@@ -155,101 +152,98 @@ async function queueOfflineNotification(receiverId, senderId) {
       );
     }
   }
-*/
+  */
 
-async function notifyUserOfOfflineMessages(userId) {
-  if (!Notification) {
-    console.warn("⚠️ Notification model missing, cannot notify offline messages");
-    return;
+  async function notifyUserOfOfflineMessages(userId) {
+    if (!Notification) {
+      console.warn("⚠️ Notification model missing, cannot notify offline messages");
+      return;
+    }
+
+    try {
+      console.log("🔔 Checking offline notifications for user", userId);
+
+      const pending = await Notification.find({
+        user: userId,
+        processed: false,
+        type: "new_message",
+      }).populate("from", "username email");
+
+      console.log("🔔 Pending notifications count:", pending.length);
+
+      if (!pending.length) return;
+
+      const userDoc = await User.findById(userId).select("email username");
+      console.log("🔔 Loaded user for notifications:", userDoc?.email);
+
+      if (!userDoc || !userDoc.email) return;
+
+      const senderNames = [
+        ...new Set(
+          pending.map((n) => n.from?.username || n.from?.email || "Someone")
+        ),
+      ];
+
+      const subject = "You have new messages";
+      const text =
+        senderNames.length === 1
+          ? `You have new messages from ${senderNames[0]}. Open the app to read them.`
+          : `You have new messages from: ${senderNames.join(
+              ", "
+            )}. Open the app to read them.`;
+
+      console.log("🔔 About to send email notification to", userDoc.email, "with subject:", subject);
+
+      await sendMail({ to: userDoc.email, subject, text });
+
+      console.log("🔔 Email sendMail() finished, marking notifications processed for user", userId);
+
+      await Notification.updateMany(
+        { _id: { $in: pending.map((p) => p._id) } },
+        { $set: { processed: true } }
+      );
+
+      console.log("🔔 Notifications marked processed for user", userId);
+    } catch (e) {
+      console.warn(
+        "⚠️ Failed to process offline message notifications:",
+        e?.message || e
+      );
+    }
   }
 
-  try {
-    console.log("🔔 Checking offline notifications for user", userId);
+  async function addSocketForUser(userId, socket) {
+    const userKey = String(userId);
+    const existingSet = onlineUsers.get(userKey) || new Set();
 
-    const pending = await Notification.find({
-      user: userId,
-      processed: false,
-      type: "new_message",
-    }).populate("from", "username email");
+    // if there were no sockets before, user was "offline" in our map
+    const wasOffline = existingSet.size === 0;
 
-    console.log("🔔 Pending notifications count:", pending.length);
+    existingSet.add(socket.id);
+    onlineUsers.set(userKey, existingSet);
+    lastActivity.set(userKey, Date.now());
 
-    if (!pending.length) return;
+    try {
+      socket.join(`user_${userKey}`);
+    } catch (e) {
+      // ignore non-fatal
+    }
 
-    const userDoc = await User.findById(userId).select("email username");
-    console.log("🔔 Loaded user for notifications:", userDoc?.email);
+    try {
+      await User.findByIdAndUpdate(userKey, { online: true }, { new: true });
+    } catch (e) {
+      console.warn("⚠️ Failed to set user online:", e?.message || e);
+    }
 
-    if (!userDoc || !userDoc.email) return;
+    // ✅ When user comes online again, reset email flag for next offline session
+    if (wasOffline) {
+      offlineEmailSent.delete(userKey);
+      // We no longer call notifyUserOfOfflineMessages here,
+      // because we now send the email on the first offline message.
+    }
 
-    const senderNames = [
-      ...new Set(
-        pending.map((n) => n.from?.username || n.from?.email || "Someone")
-      ),
-    ];
-
-    const subject = "You have new messages";
-    const text =
-      senderNames.length === 1
-        ? `You have new messages from ${senderNames[0]}. Open the app to read them.`
-        : `You have new messages from: ${senderNames.join(
-            ", "
-          )}. Open the app to read them.`;
-
-    console.log("🔔 About to send email notification to", userDoc.email, "with subject:", subject);
-
-    await sendMail({ to: userDoc.email, subject, text });
-
-    console.log("🔔 Email sendMail() finished, marking notifications processed for user", userId);
-
-    await Notification.updateMany(
-      { _id: { $in: pending.map((p) => p._id) } },
-      { $set: { processed: true } }
-    );
-
-    console.log("🔔 Notifications marked processed for user", userId);
-  } catch (e) {
-    console.warn(
-      "⚠️ Failed to process offline message notifications:",
-      e?.message || e
-    );
+    io.emit("userStatus", { userId: userKey, online: true });
   }
-}
-
-
-async function addSocketForUser(userId, socket) {
-  const userKey = String(userId);
-  const existingSet = onlineUsers.get(userKey) || new Set();
-
-  // if there were no sockets before, user was "offline" in our map
-  const wasOffline = existingSet.size === 0;
-
-  existingSet.add(socket.id);
-  onlineUsers.set(userKey, existingSet);
-  lastActivity.set(userKey, Date.now());
-
-  try {
-    socket.join(`user_${userKey}`);
-  } catch (e) {
-    // ignore non-fatal
-  }
-
-  try {
-    await User.findByIdAndUpdate(userKey, { online: true }, { new: true });
-  } catch (e) {
-    console.warn("⚠️ Failed to set user online:", e?.message || e);
-  }
-
-  // ✅ Only process offline notifications the FIRST time user comes online
-  if (wasOffline) {
-    notifyUserOfOfflineMessages(userKey).catch(() => {});
-  }
-
-  io.emit("userStatus", { userId: userKey, online: true });
-}
-
-
-
-  
 
   async function removeSocketForUser(userId, socketId) {
     const set = onlineUsers.get(userId);
@@ -359,7 +353,11 @@ async function addSocketForUser(userId, socket) {
       if (!payload) return;
       const msg = payload.message || payload;
 
-      const sender = String(msg.sender || socket.userId || (msg.sender && (msg.sender._id || msg.sender.id)));
+      const sender = String(
+        msg.sender ||
+          socket.userId ||
+          (msg.sender && (msg.sender._id || msg.sender.id))
+      );
       const receiver = String(
         msg.receiver ||
           msg.to ||
@@ -387,24 +385,20 @@ async function addSocketForUser(userId, socket) {
           io.to(`user_${receiver}`).emit("receiveMessage", saved);
           io.to(`user_${sender}`).emit("receiveMessage", saved);
 
-       const isReceiverOnline = onlineUsers.has(String(receiver));
+          const receiverKey = String(receiver);
+          const isReceiverOnline = onlineUsers.has(receiverKey);
 
-if (!isReceiverOnline) {
-  // 1) Store the message notification in DB
-  await queueOfflineNotification(receiver, sender);
+          if (!isReceiverOnline) {
+            // 1) Always queue a notification row (used to build email content)
+            await queueOfflineNotification(receiver, sender);
 
-  // 2) Check how many unprocessed notifications exist
-  const pending = await Notification.countDocuments({
-    user: receiver,
-    processed: false,
-    type: "new_message",
-  });
-
-  // 3) If this is the FIRST pending notification, send one email
-  if (pending === 1) {
-    notifyUserOfOfflineMessages(receiver).catch(() => {});
-  }
-}
+            // 2) Only send ONE email per offline session
+            const alreadySent = offlineEmailSent.get(receiverKey);
+            if (!alreadySent) {
+              notifyUserOfOfflineMessages(receiverKey).catch(() => {});
+              offlineEmailSent.set(receiverKey, true);
+            }
+          }
         } catch (e) {
           console.warn("⚠️ Failed to save message in socket:", e.message);
           const raw = { sender, receiver, content, createdAt: Date.now() };
@@ -422,40 +416,37 @@ if (!isReceiverOnline) {
       if (messageId && to) io.to(`user_${to}`).emit("messageDelivered", { messageId });
     });
 
-   //replaced
-socket.on("messageSeen", async ({ messageId, to }) => {
-  if (!messageId) return;
+    // replaced
+    socket.on("messageSeen", async ({ messageId, to }) => {
+      if (!messageId) return;
 
-  // 1) Notify the other user in real-time (same as before)
-  if (to) {
-    io.to(`user_${to}`).emit("messageSeen", { messageId });
-  }
+      // 1) Notify the other user in real-time (same as before)
+      if (to) {
+        io.to(`user_${to}`).emit("messageSeen", { messageId });
+      }
 
-  // 2) Persist "seen" in the database so future /messages calls know it
-  if (Message) {
-    try {
-      await Message.findByIdAndUpdate(
-        messageId,
-        {
-          $set: {
-            read: true,
-            seen: true,
-            seenAt: new Date(),
-          },
-        },
-        { new: true }
-      );
-    } catch (e) {
-      console.warn(
-        "⚠️ Failed to persist messageSeen in DB:",
-        e?.message || e
-      );
-    }
-  }
-});
-
-
-
+      // 2) Persist "seen" in the database so future /messages calls know it
+      if (Message) {
+        try {
+          await Message.findByIdAndUpdate(
+            messageId,
+            {
+              $set: {
+                read: true,
+                seen: true,
+                seenAt: new Date(),
+              },
+            },
+            { new: true }
+          );
+        } catch (e) {
+          console.warn(
+            "⚠️ Failed to persist messageSeen in DB:",
+            e?.message || e
+          );
+        }
+      }
+    });
 
     socket.on("logout", async () => {
       if (socket.userId) await removeSocketForUser(socket.userId, socket.id);
