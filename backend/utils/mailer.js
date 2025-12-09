@@ -32,13 +32,17 @@ function getResendClient() {
 async function sendMail({ to, subject, text }) {
   console.log("📧 sendMail called with:", { to, subject });
 
-  const from = process.env.EMAIL_FROM;
+  const fromEmail = process.env.EMAIL_FROM;           // e.g. chat@maniprabhas.dpdns.org
+  const fromName = process.env.EMAIL_FROM_NAME || "Chat Mani"; // optional display name
   const client = getResendClient();
 
-  if (!client || !from) {
+  if (!client || !fromEmail) {
     console.warn("⚠️ [Resend] sendMail aborted: client or FROM not configured");
     return;
   }
+
+  // Use a friendly "From" with display name to reduce spam flags
+  const from = `${fromName} <${fromEmail}>`;
 
   try {
     const { data, error } = await client.emails.send({

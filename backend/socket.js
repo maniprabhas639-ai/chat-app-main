@@ -216,31 +216,40 @@ async function notifyUserOfOfflineMessages(userId) {
 }
 
 
+async function addSocketForUser(userId, socket) {
+  const userKey = String(userId);
+  const existingSet = onlineUsers.get(userKey) || new Set();
 
+  // if there were no sockets before, user was "offline" in our map
+  const wasOffline = existingSet.size === 0;
 
+  existingSet.add(socket.id);
+  onlineUsers.set(userKey, existingSet);
+  lastActivity.set(userKey, Date.now());
 
-  async function addSocketForUser(userId, socket) {
-    const set = onlineUsers.get(userId) || new Set();
-    set.add(socket.id);
-    onlineUsers.set(userId, set);
-    lastActivity.set(userId, Date.now());
-    try {
-      socket.join(`user_${userId}`);
-    } catch (e) {
-      // ignore non-fatal
-    }
-
-    try {
-      await User.findByIdAndUpdate(userId, { online: true }, { new: true });
-    } catch (e) {
-      console.warn("⚠️ Failed to set user online:", e?.message || e);
-    }
-    
-      // 🔔 send any pending email notifications (non-blocking)
-    notifyUserOfOfflineMessages(userId).catch(() => {});
-
-    io.emit("userStatus", { userId, online: true });
+  try {
+    socket.join(`user_${userKey}`);
+  } catch (e) {
+    // ignore non-fatal
   }
+
+  try {
+    await User.findByIdAndUpdate(userKey, { online: true }, { new: true });
+  } catch (e) {
+    console.warn("⚠️ Failed to set user online:", e?.message || e);
+  }
+
+  // ✅ Only process offline notifications the FIRST time user comes online
+  if (wasOffline) {
+    notifyUserOfOfflineMessages(userKey).catch(() => {});
+  }
+
+  io.emit("userStatus", { userId: userKey, online: true });
+}
+
+
+
+  
 
   async function removeSocketForUser(userId, socketId) {
     const set = onlineUsers.get(userId);
