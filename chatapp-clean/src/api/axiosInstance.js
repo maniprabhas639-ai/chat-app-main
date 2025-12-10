@@ -8,8 +8,20 @@ import { getSocket } from "./socket";
  * Determine baseURL:
  */
 const resolveBaseURL = () => {
+  // 🔴 Hard-force localhost in DEV so we can debug cleanly
+  if (__DEV__) {
+    const local = "http://localhost:10000/api";
+    console.log("🔗 axios baseURL (DEV forced):", local);
+    return local;
+  }
+
+  // 👉 PRODUCTION / BUILD: keep your existing behavior
+  console.log("🔌 axios config API_URL:", API_URL);
+  console.log("🔌 axios config API_BASE_URL:", API_BASE_URL);
+
   // prefer explicit API_BASE_URL (expo extra or env)
-  if (typeof API_BASE_URL === "string" && API_BASE_URL.length) return API_BASE_URL;
+  if (typeof API_BASE_URL === "string" && API_BASE_URL.length)
+    return API_BASE_URL;
   if (typeof API_URL === "string" && API_URL.length) {
     const t = API_URL.trim().replace(/\/+$/g, "");
     if (/\/api(\/|$)/.test(t)) return t;
@@ -21,10 +33,12 @@ const resolveBaseURL = () => {
     return process.env.REACT_APP_API_URL.replace(/\/+$/g, "");
   }
 
-  return "http://localhost:5000/api";
+  // final fallback for prod
+  return "https://chat-app-backend-sgu2.onrender.com/api";
 };
 
 const baseURL = resolveBaseURL();
+console.log("✅ axios baseURL in this run:", baseURL);
 
 /**
  * Axios instance
@@ -36,7 +50,6 @@ const api = axios.create({
     "Content-Type": "application/json",
   },
 });
-
 
 /* ---------- Token cache & helpers ---------- */
 /**
@@ -102,8 +115,12 @@ const clearAuthAndSocket = async () => {
   try {
     const sock = getSocket();
     if (sock) {
-      try { sock.emit && sock.emit("logout"); } catch (_) {}
-      try { sock.disconnect && sock.disconnect(); } catch (_) {}
+      try {
+        sock.emit && sock.emit("logout");
+      } catch (_) {}
+      try {
+        sock.disconnect && sock.disconnect();
+      } catch (_) {}
     }
   } catch (e) {
     // ignore
@@ -140,12 +157,14 @@ api.interceptors.response.use(
   async (error) => {
     const config = error?.config || {};
     // RETRY logic for network errors / 5xx
-    const shouldRetry = (!error.response || (error.response && error.response.status >= 500));
+    const shouldRetry =
+      !error.response || (error.response && error.response.status >= 500);
     if (shouldRetry) {
       config.__retryCount = config.__retryCount || 0;
       if (config.__retryCount < (config.retry ?? api.defaults.retry)) {
         config.__retryCount += 1;
-        const delay = (config.retryDelay ?? api.defaults.retryDelay)(config.__retryCount);
+        const delay =
+          (config.retryDelay ?? api.defaults.retryDelay)(config.__retryCount);
         await new Promise((r) => setTimeout(r, delay));
         try {
           return api(config);
@@ -159,7 +178,9 @@ api.interceptors.response.use(
     try {
       const status = error?.response?.status;
       if (status === 401) {
-        console.warn("API: 401 Unauthorized received — clearing stored auth.");
+        console.warn(
+          "API: 401 Unauthorized received — clearing stored auth."
+        );
         await clearAuthAndSocket();
       }
     } catch (e) {

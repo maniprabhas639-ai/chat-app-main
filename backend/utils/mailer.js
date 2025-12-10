@@ -32,7 +32,7 @@ function getResendClient() {
 async function sendMail({ to, subject, text }) {
   console.log("📧 sendMail called with:", { to, subject });
 
-  const fromEmail = process.env.EMAIL_FROM;           // e.g. chat@maniprabhas.dpdns.org
+  const fromEmail = process.env.EMAIL_FROM; // e.g. chat@maniprabhas.dpdns.org
   const fromName = process.env.EMAIL_FROM_NAME || "Chat Mani"; // optional display name
   const client = getResendClient();
 

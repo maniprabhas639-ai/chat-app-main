@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Platform,      // 👈 added
+  Platform,
 } from "react-native";
 import { AuthContext } from "../context/AuthContext";
 import api from "../api/axiosInstance";
@@ -21,14 +21,34 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const showAlert = (title, message) => {
+    if (Platform.OS === "web") {
+      window.alert(`${title}: ${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const handleRegister = async () => {
     if (!username || !email || !password) {
-      const msg = "Please fill all fields";
-      if (Platform.OS === "web") {
-        window.alert(msg);
-      } else {
-        Alert.alert("Validation", msg);
-      }
+      showAlert("Validation", "Please fill all fields");
+      return;
+    }
+
+    // basic email + length validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      showAlert("Validation", "Please enter a valid email address");
+      return;
+    }
+
+    if (username.length < 3) {
+      showAlert("Validation", "Username must be at least 3 characters");
+      return;
+    }
+
+    if (password.length < 6) {
+      showAlert("Validation", "Password must be at least 6 characters");
       return;
     }
 
@@ -40,15 +60,20 @@ export default function RegisterScreen({ navigation }) {
         password,
       });
 
-      if (res.data?.user && res.data?.token) {
-        await register(res.data.user, res.data.token);
+      const { emailVerificationRequired, message } = res.data || {};
+
+      if (emailVerificationRequired) {
+        const finalMsg =
+          message ||
+          "Registered successfully. We've sent a verification code to your email.";
+
+        showAlert("Success", finalMsg);
+
+        // Navigate to VerifyEmail screen with email
+        navigation.navigate(ROUTES.VERIFY_EMAIL, { email });
       } else {
-        const msg = "Invalid response from server";
-        if (Platform.OS === "web") {
-          window.alert(msg);
-        } else {
-          Alert.alert("Error", msg);
-        }
+        // If backend didn't set the flag, treat it as an error
+        showAlert("Error", "Unexpected response from server.");
       }
     } catch (error) {
       console.error("Register error (full):", {
@@ -77,12 +102,7 @@ export default function RegisterScreen({ navigation }) {
         message = "Registration failed";
       }
 
-      // 👇 same behavior as LoginScreen: window.alert on web
-      if (Platform.OS === "web") {
-        window.alert(message);
-      } else {
-        Alert.alert("Error", message);
-      }
+      showAlert("Error", message);
     } finally {
       setLoading(false);
     }

@@ -19,11 +19,15 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [forgotLoading, setForgotLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
-      return Alert.alert("Validation", "Please enter email and password");
+      if (Platform.OS === "web") {
+        window.alert("Please enter email and password");
+      } else {
+        Alert.alert("Validation", "Please enter email and password");
+      }
+      return;
     }
 
     try {
@@ -33,12 +37,16 @@ export default function LoginScreen({ navigation }) {
       if (res.data?.user && res.data?.token) {
         await login(res.data.user, res.data.token);
       } else {
-        Alert.alert("Error", "Invalid response from server");
+        const msg = "Invalid response from server";
+        if (Platform.OS === "web") {
+          window.alert(msg);
+        } else {
+          Alert.alert("Error", msg);
+        }
       }
     } catch (error) {
       console.error("Login error:", error.response?.data || error.message);
 
-      // Prefer server message (e.g. "Invalid credentials"), with safe fallbacks
       const message =
         error?.response?.data?.message ||
         error?.userFriendlyMessage ||
@@ -54,38 +62,9 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email) {
-      return Alert.alert(
-        "Forgot password",
-        "Please enter your email above first."
-      );
-    }
-
-    try {
-      setForgotLoading(true);
-
-      const res = await api.post("/auth/forgot-password", { email });
-      const msg =
-        res.data?.message ||
-        "If an account exists for this email, you will receive password reset instructions shortly.";
-
-      Alert.alert("Forgot password", msg);
-    } catch (error) {
-      console.error(
-        "Forgot password error:",
-        error.response?.data || error.message
-      );
-
-      const message =
-        error?.response?.data?.message ||
-        error?.userFriendlyMessage ||
-        "Could not start password reset. Please try again.";
-
-      Alert.alert("Forgot password", message);
-    } finally {
-      setForgotLoading(false);
-    }
+  // 🔹 Forgot password now just navigates into the dedicated flow
+  const goToForgotPassword = () => {
+    navigation.navigate(ROUTES.FORGOT_PASSWORD);
   };
 
   return (
@@ -112,15 +91,13 @@ export default function LoginScreen({ navigation }) {
           onChangeText={setPassword}
         />
 
-        {/* Forgot password link (uses email field above) */}
+        {/* Forgot password link → separate flow */}
         <TouchableOpacity
           style={styles.forgotButton}
-          onPress={handleForgotPassword}
-          disabled={forgotLoading || loading}
+          onPress={goToForgotPassword}
+          disabled={loading}
         >
-          <Text style={styles.forgotText}>
-            {forgotLoading ? "Sending reset email..." : "Forgot password?"}
-          </Text>
+          <Text style={styles.forgotText}>Forgot password?</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -147,7 +124,7 @@ const styles = StyleSheet.create({
   // full-screen dark background, center card
   container: {
     flex: 1,
-    backgroundColor: "#020617", // very dark blue/black
+    backgroundColor: "#020617",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 24,
@@ -157,10 +134,9 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 420,
-    backgroundColor: "#020819", // slightly lighter than bg
+    backgroundColor: "#020819",
     borderRadius: 18,
     padding: 24,
-    // subtle border + shadow
     borderWidth: 1,
     borderColor: "#111827",
     shadowColor: "#000",
@@ -195,18 +171,16 @@ const styles = StyleSheet.create({
 
   forgotText: {
     fontSize: 13,
-    color: "#93c5fd", // subtle blue to look like link
+    color: "#93c5fd",
     textDecorationLine: "underline",
   },
 
-  // fake gradient look with strong pink → purple tone
   button: {
     marginTop: 4,
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: "center",
-    // approximation of gradient using solid color (safe for RN)
-    backgroundColor: "#ec4899", // pink-ish
+    backgroundColor: "#ec4899",
   },
 
   buttonText: {
