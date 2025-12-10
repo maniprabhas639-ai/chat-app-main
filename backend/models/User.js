@@ -20,6 +20,14 @@ const userSchema = new mongoose.Schema(
 
     online: { type: Boolean, default: false },
     lastSeen: { type: Date, default: Date.now },
+
+    // 👇 NEW: list of users this user can chat with (accepted contacts)
+    contacts: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
   },
   {
     timestamps: true,

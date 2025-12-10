@@ -375,6 +375,34 @@ module.exports = (server, app) => {
       const content = msg.content ?? msg.text ?? msg.body ?? "";
       if (!content) return;
 
+       // 🔒 PERMISSION CHECK: only allow message if receiver is in sender's contacts
+      try {
+        const senderDoc = await User.findById(sender).select("contacts");
+        const isContact =
+          senderDoc &&
+          Array.isArray(senderDoc.contacts) &&
+          senderDoc.contacts.some((id) => id.toString() === receiver);
+
+        if (!isContact) {
+          io.to(`user_${sender}`).emit("messageBlocked", {
+            reason: "not_contacts",
+            receiver,
+          });
+          return;
+        }
+      } catch (permErr) {
+        console.warn(
+          "⚠️ Failed to check contacts in sendMessage:",
+          permErr?.message || permErr
+        );
+        // fallback: if check fails, we still block to be safe
+        io.to(`user_${sender}`).emit("messageBlocked", {
+          reason: "not_contacts",
+          receiver,
+        });
+        return;
+      }
+
       if (Message) {
         try {
           const saved = await Message.create({ sender, receiver, content });

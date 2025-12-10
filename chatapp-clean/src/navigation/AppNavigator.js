@@ -11,9 +11,12 @@ import ChatScreenModule from "../screens/ChatScreen";
 import LoginScreenModule from "../screens/LoginScreen";
 import RegisterScreenModule from "../screens/RegisterScreen";
 import VerifyEmailScreenModule from "../screens/VerifyEmailScreen";
-import ForgotPasswordScreenModule from "../screens/ForgotPasswordScreen"; // 👈 NEW
-import ResetPasswordOtpScreenModule from "../screens/ResetPasswordOtpScreen"; // 👈 NEW
-import ResetPasswordNewPasswordScreenModule from "../screens/ResetPasswordNewPasswordScreen"; // 👈 NEW
+import ForgotPasswordScreenModule from "../screens/ForgotPasswordScreen";
+import ResetPasswordOtpScreenModule from "../screens/ResetPasswordOtpScreen";
+import ResetPasswordNewPasswordScreenModule from "../screens/ResetPasswordNewPasswordScreen";
+
+// 👇 NEW
+import PeopleScreenModule from "../screens/PeopleScreen";
 
 const HomeScreen = HomeScreenModule?.default || HomeScreenModule;
 const ChatScreen = ChatScreenModule?.default || ChatScreenModule;
@@ -28,6 +31,9 @@ const ResetPasswordOtpScreen =
 const ResetPasswordNewPasswordScreen =
   ResetPasswordNewPasswordScreenModule?.default ||
   ResetPasswordNewPasswordScreenModule;
+
+// 👇 NEW
+const PeopleScreen = PeopleScreenModule?.default || PeopleScreenModule;
 
 const Stack = createNativeStackNavigator();
 
@@ -62,12 +68,18 @@ function MainStack() {
       <Stack.Screen
         name={ROUTES.HOME}
         component={HomeScreen}
-        options={{ title: "Home" }}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name={ROUTES.CHAT}
         component={ChatScreen}
         options={{ title: "Chat" }}
+      />
+      {/* 👇 NEW: find people / all users */}
+      <Stack.Screen
+        name={ROUTES.PEOPLE}
+        component={PeopleScreen}
+        options={{ title: "Find people" }}
       />
     </Stack.Navigator>
   );
