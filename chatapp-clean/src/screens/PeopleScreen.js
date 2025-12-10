@@ -134,32 +134,6 @@ export default function PeopleScreen({ navigation }) {
     }
   };
 
-  // 🔹 NEW: cancel own outgoing request
-  const handleCancelRequest = async (other) => {
-    try {
-      setActionLoadingId(other._id);
-      const res = await api.post("/users/follow/cancel", {
-        userId: other._id,
-      });
-
-      const { message } = res.data || {};
-      if (message) showAlert("Info", message);
-
-      await fetchPeople();
-    } catch (err) {
-      console.warn(
-        "Cancel follow request error:",
-        err.response?.data || err.message
-      );
-      showAlert(
-        "Error",
-        err?.response?.data?.message || "Could not cancel request."
-      );
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
   const handleUnfollow = async (other) => {
     try {
       setActionLoadingId(other._id);
@@ -214,7 +188,6 @@ export default function PeopleScreen({ navigation }) {
     }
 
     if (status === "pending_sent") {
-      // 🔹 UPDATED: show "Request sent" + Cancel button
       return (
         <View style={styles.actionsRow}>
           <View style={styles.statusPillMuted}>
@@ -222,15 +195,6 @@ export default function PeopleScreen({ navigation }) {
               {isBusy ? "Updating..." : "Request sent"}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.secondaryButtonSmall}
-            onPress={() => handleCancelRequest(item)}
-            disabled={isBusy}
-          >
-            <Text style={styles.secondaryButtonSmallText}>
-              {isBusy ? "..." : "Cancel"}
-            </Text>
-          </TouchableOpacity>
         </View>
       );
     }
@@ -277,22 +241,29 @@ export default function PeopleScreen({ navigation }) {
     const isMe = user && item._id === user._id;
     const status = item.relationshipStatus || "none";
     const isIncoming = status === "pending_received";
+    const isWeb = Platform.OS === "web";
 
     return (
       <LinearGradient
-        colors={["#22d3ee", "#14b8a6"]} // 🌤 sky teal gradient
+        colors={["#22d3ee", "#14b8a6"]} // sky teal gradient
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.rowGradient, isIncoming && styles.rowHighlight]}
       >
-        <View style={styles.rowInner}>
+        <View
+          style={[
+            styles.rowInner,
+            !isWeb && styles.rowInnerMobile, // column layout on mobile
+          ]}
+        >
           <View style={styles.leftInfo}>
             <View style={styles.avatarCircle}>
               <Text style={styles.avatarText}>
                 {displayName.charAt(0).toUpperCase()}
               </Text>
             </View>
-            <View>
+
+            <View style={styles.textBlock}>
               <Text style={styles.nameText}>
                 {displayName} {isMe ? "(You)" : ""}
               </Text>
@@ -310,7 +281,16 @@ export default function PeopleScreen({ navigation }) {
             </View>
           </View>
 
-          <View style={styles.rightInfo}>{!isMe && renderAction(item)}</View>
+          {!isMe && (
+            <View
+              style={[
+                styles.rightInfo,
+                !isWeb && styles.rightInfoMobile, // buttons move below on mobile
+              ]}
+            >
+              {renderAction(item)}
+            </View>
+          )}
         </View>
       </LinearGradient>
     );
@@ -447,13 +427,18 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   rowInner: {
-    flexDirection: "row",
+    flexDirection: "row", // desktop / web
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 12,
     paddingHorizontal: 12,
     borderRadius: 16,
     backgroundColor: "rgba(15, 23, 42, 0.65)",
+  },
+  // mobile: stack text + buttons vertically
+  rowInnerMobile: {
+    flexDirection: "column",
+    alignItems: "flex-start",
   },
   rowHighlight: {
     borderWidth: 2,
@@ -465,9 +450,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexShrink: 1,
   },
+  textBlock: {
+    flexShrink: 1,
+    maxWidth: "100%",
+  },
   rightInfo: {
     alignItems: "flex-end",
     justifyContent: "center",
+  },
+  rightInfoMobile: {
+    alignItems: "flex-start",
+    marginTop: 8,
   },
 
   avatarCircle: {
@@ -488,21 +481,22 @@ const styles = StyleSheet.create({
   nameText: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#ffffff",
+    color: "#FFFFFF",
   },
   subText: {
-    fontSize: 14,
-    color: "#CCF4FF",
+    fontSize: 12,
+    color: "#e0f2fe",
     marginTop: 2,
   },
   helperText: {
-    fontSize: 12,
-    color: "#FFD966",
+    fontSize: 11,
+    color: "#f97316",
     marginTop: 2,
   },
 
   actionsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
   },
 
@@ -512,6 +506,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#3b82f6",
     marginLeft: 8,
+    marginTop: 4,
   },
   primaryButtonSmallText: {
     fontSize: 12,
@@ -524,6 +519,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#020617",
     marginLeft: 8,
+    marginTop: 4,
   },
   secondaryButtonSmallText: {
     fontSize: 12,
@@ -537,6 +533,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#16a34a",
     marginLeft: 8,
+    marginTop: 4,
   },
   statusPillMuted: {
     paddingHorizontal: 10,
@@ -544,6 +541,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#020617",
     marginLeft: 8,
+    marginTop: 4,
   },
   statusPillText: {
     fontSize: 11,
